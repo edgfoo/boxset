@@ -1,0 +1,361 @@
+//! The plain-terminal client: flags in, `TargetConfig`/`Selection`/`Sources`
+//! to the backend, lines out. Holds no behaviour the backend lacks.
+
+mod flags;
+mod report;
+
+pub use flags::FieldFlags;
+
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use anyhow::{Context, bail};
+
+use boxset::config::{Config, TargetConfig};
+use boxset::plan::Selection;
+use boxset::problem::{ProblemKind, Severity};
+use boxset::sources::{ProbeErrorKind, SourceState, Sources};
+
+use report::LineReporter;
+
+const DEFAULT_JOBS: usize = 2;
+
+pub fn print_help() {
+    println!("boxset — prepare video for the web");
+    println!();
+    println!("  boxset <video>   prepare one video");
+    println!("  boxset build     rebuild everything boxset.toml describes");
+    println!("  boxset studio    guided setup");
+    println!();
+    println!("Run --help for the full flag list.");
+}
+
+/// How this invocation runs, as opposed to what its targets are: flags win
+/// over the config file's project-wide keys.
+struct RunSettings {
+    out_dir: PathBuf,
+    jobs: usize,
+    dry_run: bool,
+    verbose: bool,
+    /// Where the lockfile lives: beside the config, or the cwd for a
+    /// single-shot run that has none.
+    lock_dir: PathBuf,
+}
+
+/// `boxset video.mp4`: one positional source, described entirely by flags.
+/// Reads no config, writes none.
+pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()> {
+    let config = fields.to_target_config(source.to_path_buf())?;
+    let settings = RunSettings {
+        out_dir: fields
+            .out_dir
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("assets/video")),
+        jobs: fields.jobs.unwrap_or(DEFAULT_JOBS),
+        dry_run: fields.dry_run,
+        verbose: fields.verbose,
+        lock_dir: PathBuf::from("."),
+    };
+    run(
+        vec![config],
+        &TargetConfig::default(),
+        &BTreeMap::new(),
+        &Selection::all(),
+        &settings,
+    )
+}
+
+/// `boxset build [--target NAME]...`: reconstructs the outputs boxset.toml
+/// describes, narrowed to the named targets if any are given.
+pub fn build(
+    targets: &[String],
+    config_path: Option<&Path>,
+    fields: &FieldFlags,
+) -> anyhow::Result<()> {
+    if let Some(flag) = fields.first_field_flag() {
+        bail!(
+            "{flag} can't be used with `build`\n  Target settings come from boxset.toml.\n  For a \
+             one-off, use `boxset <video> {flag} ...`"
+        );
+    }
+
+    let given = config_path.unwrap_or(Path::new(boxset::config::CONFIG_FILE));
+    let path = match given.is_dir() {
+        true => given.join(boxset::config::CONFIG_FILE),
+        false => given.to_path_buf(),
+    };
+    let text = std::fs::read_to_string(&path).with_context(|| match config_path {
+        Some(_) => format!("no config at {}", path.display()),
+        None => "no boxset.toml in this directory".to_string(),
+    })?;
+    let mut config: Config =
+        toml::from_str(&text).with_context(|| format!("{} is not valid TOML", path.display()))?;
+
+    // Everything downstream sees paths already resolved, so no later stage
+    // needs to know where the config came from.
+    let dir = path.parent().unwrap_or(Path::new("")).to_path_buf();
+    config.rebase(&dir);
+
+    let settings = RunSettings {
+        out_dir: match &fields.out_dir {
+            Some(flag) => boxset::config::against(&dir, flag),
+            None => config.out_dir.clone(),
+        },
+        jobs: fields.jobs.or(config.jobs).unwrap_or(DEFAULT_JOBS),
+        dry_run: fields.dry_run,
+        verbose: fields.verbose,
+        lock_dir: dir,
+    };
+    let selection = Selection {
+        names: targets.to_vec(),
+    };
+    run(
+        config.merged_targets(),
+        &config.defaults,
+        &config.unknown,
+        &selection,
+        &settings,
+    )
+}
+
+/// The shared pipeline both entry paths run.
+fn run(
+    configs: Vec<TargetConfig>,
+    defaults: &TargetConfig,
+    top_level: &BTreeMap<String, toml::Value>,
+    selection: &Selection,
+    settings: &RunSettings,
+) -> anyhow::Result<()> {
+    let paths: Vec<PathBuf> = configs.iter().filter_map(|c| c.src.clone()).collect();
+
+    // Before probing: probing is the wait this announces.
+    let mut names: Vec<String> = configs
+        .iter()
+        .filter(|c| selection.covers_config(c))
+        .filter_map(|c| c.src.as_deref())
+        .map(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        })
+        .collect();
+    names.dedup();
+    println!("{}", report::reading_line(&names));
+
+    let mut sources = Sources::new();
+    sources.request(&paths);
+    sources.wait();
+
+    let problems = boxset::validate(&configs, defaults, top_level, &settings.out_dir, &sources);
+    for problem in &problems {
+        println!("{}", describe_problem(problem));
+    }
+    if problems.iter().any(|p| p.severity == Severity::Error) {
+        bail!("stopped: nothing was encoded");
+    }
+
+    let mut resolved = Vec::new();
+    let mut probes = Vec::new();
+    for config in &configs {
+        let src = config.src.as_ref().expect("validated: src is present");
+        let Some(SourceState::Probed(probe)) = sources.get(src) else {
+            unreachable!("validated: every source probed");
+        };
+        resolved.push(boxset::resolve(config, probe, &settings.out_dir));
+        probes.push(Arc::new(probe.clone()));
+    }
+
+    let known: Vec<String> = resolved.iter().map(boxset::plan::identity).collect();
+    let unmatched: Vec<&String> = selection
+        .names
+        .iter()
+        .filter(|name| !known.contains(name))
+        .collect();
+    if let Some(name) = unmatched.first() {
+        bail!(
+            "no target called `{name}`\n  boxset.toml defines: {}",
+            known.join(", ")
+        );
+    }
+
+    let plan = boxset::plan(&resolved, &probes, selection);
+    if plan.tasks.is_empty() {
+        println!("Nothing to do.");
+        return Ok(());
+    }
+
+    let replacing: Vec<&boxset::task::Task> = plan.tasks.iter().filter(|t| t.exists).collect();
+    if !replacing.is_empty() {
+        println!();
+        println!("  {} files will be overwritten:", replacing.len());
+        for task in replacing {
+            println!("    {}", task.output_path.display());
+        }
+    }
+
+    let mut reporter = LineReporter::new(&plan, settings.verbose);
+
+    if settings.dry_run {
+        println!("Would produce {} file(s):", plan.tasks.len());
+        for task in &plan.tasks {
+            println!("  {}", task.output_path.display());
+        }
+        return Ok(());
+    }
+
+    let requirements = boxset::check_environment(&plan);
+    boxset::ensure(&requirements, &mut reporter)?;
+
+    let source_hashes = hash_sources(&plan);
+
+    let outcome = boxset::execute(&plan, &mut reporter, settings.jobs);
+    println!();
+    println!(
+        "{}",
+        report::closing_line(outcome.succeeded, outcome.failed)
+    );
+
+    write_lockfile(&plan, &outcome, &source_hashes, &settings.lock_dir);
+
+    if outcome.failed > 0 {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// One hash per distinct source, since hashing reads the whole file and
+/// several targets often share one.
+fn hash_sources(plan: &boxset::Plan) -> HashMap<PathBuf, String> {
+    let mut hashes = HashMap::new();
+    for task in &plan.tasks {
+        let src = &task.probe.src;
+        if hashes.contains_key(src) {
+            continue;
+        }
+        if let Some(hash) = boxset::lock::hash_file(src) {
+            hashes.insert(src.clone(), hash);
+        }
+    }
+    hashes
+}
+
+/// Writes an entry per produced output, beside `boxset.toml`. Entries this
+/// run didn't touch are left alone, so a narrowed `--target` run keeps the
+/// other targets'.
+fn write_lockfile(
+    plan: &boxset::Plan,
+    outcome: &boxset::execute::ExecutionOutcome,
+    source_hashes: &HashMap<PathBuf, String>,
+    dir: &Path,
+) {
+    if outcome.produced.is_empty() {
+        return;
+    }
+
+    let ffmpeg_version = boxset::lock::ffmpeg_version();
+    let boxset_version = boxset::lock::boxset_version();
+
+    let entries = plan
+        .tasks
+        .iter()
+        .filter(|task| outcome.produced.contains(&task.id))
+        .filter_map(|task| {
+            let output_hash = boxset::lock::hash_file(&task.output_path)?;
+            Some((
+                task.output_path.clone(),
+                boxset::LockEntry {
+                    source_hash: source_hashes
+                        .get(&task.probe.src)
+                        .cloned()
+                        .unwrap_or_default(),
+                    output_hash,
+                    args_hash: boxset::lock::args_hash(&task.work),
+                    boxset_version: boxset_version.clone(),
+                    ffmpeg_version: ffmpeg_version.clone(),
+                },
+            ))
+        });
+
+    let mut lockfile = boxset::Lockfile::read(dir);
+    lockfile.absorb(entries);
+
+    // The outputs are already written, so a lockfile that won't write is
+    // worth reporting but not worth failing the build over.
+    if let Err(e) = lockfile.write(dir) {
+        println!("warning: couldn't write {}: {e}", boxset::lock::LOCK_FILE);
+    }
+}
+
+/// Where the backend's matchable values become sentences.
+fn describe_problem(problem: &boxset::Problem) -> String {
+    let mark = match problem.severity {
+        Severity::Error => "error",
+        Severity::Warning => "warning",
+    };
+    let target = match problem.target {
+        Some(index) => format!("target {}: ", index + 1),
+        None => String::new(),
+    };
+    format!("{mark}: {target}{}", problem_message(&problem.kind))
+}
+
+fn problem_message(kind: &ProblemKind) -> String {
+    match kind {
+        ProblemKind::SrcMissing => "no source file given\n  Every target needs a src.".to_string(),
+        ProblemKind::SrcUnprobeable { path, reason } => {
+            let detail = match reason {
+                ProbeErrorKind::NotFound => "There's no file at that path.",
+                ProbeErrorKind::Unreadable => "boxset couldn't run ffprobe to inspect it.",
+                ProbeErrorKind::Unparseable => {
+                    "ffprobe couldn't make sense of it, so it may be \
+                     corrupt or not a video at all."
+                }
+            };
+            format!("can't read {}\n  {detail}", path.display())
+        }
+        ProblemKind::OutputCollision { other, path } => format!(
+            "two targets write the same file\n  {} is also written by target {}.\n  Give one of \
+             them a distinct name.",
+            path.display(),
+            other + 1
+        ),
+        ProblemKind::CodecOverrideForExcludedCodec => {
+            "settings for a codec this target doesn't use\n  Add the codec to codecs, or drop its \
+             settings."
+                .to_string()
+        }
+        ProblemKind::OutDirNotWritable { path } => format!(
+            "boxset can't write to {}\n  Check the directory's permissions.",
+            path.display()
+        ),
+        ProblemKind::AudioSettingOnSilentSource => {
+            "audio settings on a video with no audio track\n  They'll be ignored.".to_string()
+        }
+        ProblemKind::UnknownField { name, suggestion } => match suggestion {
+            Some(guess) => format!("unknown setting `{name}`\n  Did you mean `{guess}`?"),
+            None => format!("unknown setting `{name}`"),
+        },
+        ProblemKind::MalformedValue { value, expected } => {
+            format!("`{value}` isn't valid here\n  Expected {expected}.")
+        }
+        ProblemKind::TargetFieldAtTopLevel { name } => format!(
+            "`{name}` is a target setting, but it's at the top level\n  Move it under a \
+             [[target]] table, or under [defaults] to set it for every target."
+        ),
+        ProblemKind::FieldNotAllowedInDefaults { name } => {
+            format!("`{name}` can't go in [defaults]\n  Set it on each [[target]] instead.")
+        }
+        ProblemKind::WidthsExceedSource { widths, available } => {
+            let list = widths
+                .iter()
+                .map(|w| w.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "the source is only {available}px wide, {list} would be upscaled\n  Upscaling \
+                 makes bigger files without adding detail."
+            )
+        }
+    }
+}
