@@ -1,0 +1,30 @@
+ffmpeg version 9.0.1 Copyright (c) 2000-2026 the FFmpeg developers
+  built with Apple clang version 21.0.0 (clang-2100.1.1.101)
+  configuration: --prefix=/opt/homebrew/Cellar/ffmpeg/9.0.1_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 --enable-libmp3lame --enable-libdav1d --enable-libvmaf --enable-libvpx --enable-libx265 --enable-openssl --enable-videotoolbox --enable-audiotoolbox --enable-neon
+  libavutil      61.  1.101 / 61.  1.101
+  libavcodec     63.  1.101 / 63.  1.101
+  libavformat    63.  1.101 / 63.  1.101
+  libavdevice    63.  1.101 / 63.  1.101
+  libavfilter    12.  1.101 / 12.  1.101
+  libswscale     10.  1.101 / 10.  1.101
+  libswresample   7.  1.101 /  7.  1.101
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'tests/fixtures/bear.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    creation_time   : 1970-01-01T00:00:00.000000Z
+    encoder         : Lavf53.6.0
+  Duration: 00:00:01.07, start: 0.000000, bitrate: 309 kb/s
+  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, smpte170m, progressive), 320x180, 241 kb/s, 31 fps, 29.97 tbr, 2997 tbn, start 0.010010 (default)
+    Metadata:
+      creation_time   : 1970-01-01T00:00:00.000000Z
+      handler_name    : VideoHandler
+  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 74 kb/s (default)
+    Metadata:
+      creation_time   : 1970-01-01T00:00:00.000000Z
+      handler_name    : SoundHandler
+[vost#0:0 @ 0xb29054000] Unknown encoder 'libx266'
+[vost#0:0 @ 0xb29054000] Error selecting an encoder
+Error opening output file /tmp/a.mp4.
+Error opening output files: Encoder not found

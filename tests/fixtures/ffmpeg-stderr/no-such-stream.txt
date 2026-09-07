@@ -1,0 +1,26 @@
+ffmpeg version 9.0.1 Copyright (c) 2000-2026 the FFmpeg developers
+  built with Apple clang version 21.0.0 (clang-2100.1.1.101)
+  configuration: --prefix=/opt/homebrew/Cellar/ffmpeg/9.0.1_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 --enable-libmp3lame --enable-libdav1d --enable-libvmaf --enable-libvpx --enable-libx265 --enable-openssl --enable-videotoolbox --enable-audiotoolbox --enable-neon
+  libavutil      61.  1.101 / 61.  1.101
+  libavcodec     63.  1.101 / 63.  1.101
+  libavformat    63.  1.101 / 63.  1.101
+  libavdevice    63.  1.101 / 63.  1.101
+  libavfilter    12.  1.101 / 12.  1.101
+  libswscale     10.  1.101 / 10.  1.101
+  libswresample   7.  1.101 /  7.  1.101
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'tests/fixtures/bear_silent.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 1
+    compatible_brands: isomavc1
+    creation_time   : 2009-07-09T17:29:46.000000Z
+  Duration: 00:00:01.00, start: 0.033367, bitrate: 243 kb/s
+  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(progressive), 320x180, 233 kb/s, 29.97 fps, 29.97 tbr, 30k tbn, start 0.033367 (default)
+    Metadata:
+      creation_time   : 2009-07-09T17:29:46.000000Z
+      handler_name    : GPAC ISO Video Handler
+Stream map '' matches no streams.
+To ignore this, add a trailing '?' to the map.
+Failed to set value '0:a:0' for option 'map': Invalid argument
+Error parsing options for output file /tmp/c.m4a.
+Error opening output files: Invalid argument

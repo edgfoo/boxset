@@ -1,0 +1,99 @@
+//! Output paths: the one place a target's filenames are built.
+
+use std::path::{Path, PathBuf};
+
+use crate::config::Codec;
+
+/// The naming inputs an output path needs.
+pub struct Naming<'a> {
+    pub out_dir: &'a Path,
+    pub src: &'a Path,
+    pub name: Option<&'a str>,
+}
+
+impl Naming<'_> {
+    /// The target's `name`, or the source stem when it has none.
+    fn stem(&self) -> String {
+        match self.name {
+            Some(name) => name.to_owned(),
+            None => self
+                .src
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        }
+    }
+}
+
+/// A codec suffix is added only when more than one `.mp4`-family codec is
+/// selected, to avoid a collision; the default `[h264, vp9]` case stays
+/// unsuffixed.
+fn needs_codec_suffix(codecs: &[Codec], codec: Codec) -> bool {
+    if codec == Codec::Vp9 {
+        return false;
+    }
+    codecs.iter().filter(|c| **c != Codec::Vp9).count() > 1
+}
+
+pub fn rendition_path(naming: &Naming, codecs: &[Codec], width: u32, codec: Codec) -> PathBuf {
+    let stem = naming.stem();
+    let ext = match codec {
+        Codec::Vp9 => "webm",
+        _ => "mp4",
+    };
+    let filename = if needs_codec_suffix(codecs, codec) {
+        format!("{stem}-{width}-{}.{ext}", codec_suffix(codec))
+    } else {
+        format!("{stem}-{width}.{ext}")
+    };
+    naming.out_dir.join(filename)
+}
+
+pub fn poster_path(naming: &Naming, width: u32) -> PathBuf {
+    naming
+        .out_dir
+        .join(format!("{}-{width}-poster.jpg", naming.stem()))
+}
+
+pub fn subtitles_path(naming: &Naming) -> PathBuf {
+    naming.out_dir.join(format!("{}.vtt", naming.stem()))
+}
+
+pub fn codec_suffix(codec: Codec) -> &'static str {
+    match codec {
+        Codec::H264 => "h264",
+        Codec::H265 => "h265",
+        Codec::Vp9 => "vp9",
+        Codec::Av1 => "av1",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// vp9 is alone in webm, so it never takes the suffix its mp4-family
+    /// siblings take on once there is more than one of them.
+    #[test]
+    fn a_second_mp4_family_codec_suffixes_only_those() {
+        let naming = Naming {
+            out_dir: Path::new("assets/video"),
+            src: Path::new("interview.mp4"),
+            name: None,
+        };
+        let codecs = [Codec::H264, Codec::Vp9, Codec::Av1];
+
+        assert_eq!(
+            rendition_path(&naming, &codecs, 960, Codec::H264),
+            PathBuf::from("assets/video/interview-960-h264.mp4")
+        );
+        assert_eq!(
+            rendition_path(&naming, &codecs, 960, Codec::Vp9),
+            PathBuf::from("assets/video/interview-960.webm")
+        );
+        assert_eq!(
+            rendition_path(&naming, &[Codec::H264, Codec::Vp9], 960, Codec::H264),
+            PathBuf::from("assets/video/interview-960.mp4")
+        );
+    }
+}
