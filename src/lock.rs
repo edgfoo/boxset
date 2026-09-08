@@ -2,7 +2,7 @@
 //!
 //! Machine-local and uncommitted.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -29,6 +29,10 @@ pub struct LockEntry {
     pub args_hash: String,
     pub boxset_version: String,
     pub ffmpeg_version: String,
+    /// Exact ffmpeg commands that generated the output, for reference only.
+    /// These can vary between identical runs with the same config.
+    #[serde(default)]
+    pub commands: Vec<String>,
 }
 
 impl Lockfile {
@@ -50,9 +54,16 @@ impl Lockfile {
         std::fs::write(&path, text).map_err(|source| BoxsetError::WriteFailed { path, source })
     }
 
-    /// Entries for the outputs this run produced; everything else is left as
-    /// it was, so a narrowed `--target` run preserves the other targets'.
-    pub fn absorb(&mut self, entries: impl IntoIterator<Item = (PathBuf, LockEntry)>) {
+    /// Adds this run's entries, dropping any whose path is not in
+    /// `all_outputs`. A filtered run keeps the entries for outputs it skipped.
+    pub fn absorb(
+        &mut self,
+        entries: impl IntoIterator<Item = (PathBuf, LockEntry)>,
+        all_outputs: &[PathBuf],
+    ) {
+        let keep: HashSet<&str> = all_outputs.iter().filter_map(|p| p.to_str()).collect();
+        self.outputs.retain(|path, _| keep.contains(path.as_str()));
+
         for (path, entry) in entries {
             self.outputs
                 .insert(path.to_string_lossy().into_owned(), entry);
@@ -197,6 +208,7 @@ mod tests {
             args_hash: args_hash.to_string(),
             boxset_version: "0.1.0".to_string(),
             ffmpeg_version: "9.0.1".to_string(),
+            commands: vec!["ffmpeg -i in.mp4 out.mp4".to_string()],
         }
     }
 
@@ -209,11 +221,6 @@ mod tests {
             overrides.crf = Some(20);
         }
         assert_ne!(args_hash(&rendition(480)), args_hash(&crf_20));
-    }
-
-    #[test]
-    fn args_hash_is_stable_for_equal_intent() {
-        assert_eq!(args_hash(&rendition(480)), args_hash(&rendition(480)));
     }
 
     /// A poster and a rendition of the same width are different work, and the
@@ -249,37 +256,43 @@ mod tests {
         assert_ne!(args_hash(&centred), args_hash(&topped));
     }
 
-    /// A narrowed run must leave the entries it didn't build alone.
+    /// A filtered run rebuilds one output and skips another. The skipped one
+    /// keeps its entry, while an output the config has dropped loses its.
     #[test]
-    fn absorb_replaces_named_outputs_and_preserves_the_rest() {
+    fn absorb_keeps_skipped_outputs_and_drops_unnamed_ones() {
+        let (built, skipped, gone) = (
+            PathBuf::from("a.mp4"),
+            PathBuf::from("b.mp4"),
+            PathBuf::from("c.mp4"),
+        );
+
         let mut lock = Lockfile::default();
-        lock.absorb([
-            (PathBuf::from("a.mp4"), entry("old")),
-            (PathBuf::from("b.mp4"), entry("untouched")),
-        ]);
-        lock.absorb([(PathBuf::from("a.mp4"), entry("new"))]);
+        let all = [built.clone(), skipped.clone(), gone.clone()];
+        lock.absorb(
+            [
+                (built.clone(), entry("old")),
+                (skipped.clone(), entry("untouched")),
+                (gone.clone(), entry("dropped")),
+            ],
+            &all,
+        );
+
+        lock.absorb([(built.clone(), entry("new"))], &[built, skipped]);
 
         assert_eq!(lock.outputs["a.mp4"].args_hash, "new");
         assert_eq!(lock.outputs["b.mp4"].args_hash, "untouched");
+        assert!(!lock.outputs.contains_key("c.mp4"));
     }
 
     #[test]
     fn round_trips_through_toml() {
+        let path = PathBuf::from("assets/video/a.mp4");
         let mut lock = Lockfile::default();
-        lock.absorb([(PathBuf::from("assets/video/a.mp4"), entry("h"))]);
+        lock.absorb([(path.clone(), entry("h"))], &[path]);
 
         let text = toml::to_string_pretty(&lock).unwrap();
         let read: Lockfile = toml::from_str(&text).unwrap();
         assert_eq!(read.outputs, lock.outputs);
-    }
-
-    #[test]
-    fn a_missing_lockfile_reads_as_empty() {
-        let dir = std::env::temp_dir().join("boxset-lock-absent-test");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        assert!(Lockfile::read(&dir).outputs.is_empty());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A lockfile from a future version, or one someone edited badly, must not

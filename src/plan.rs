@@ -78,6 +78,34 @@ pub fn plan(settings: &[Settings], probes: &[Arc<Probe>], selection: &Selection)
     Plan { tasks }
 }
 
+/// Every output path the config names, whatever a run was filtered to.
+/// Mirrors `plan_target`'s paths, so the two must change together.
+pub fn all_output_paths(settings: &[Settings]) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    for settings in settings {
+        let naming = naming(settings);
+        for &width in &settings.widths {
+            for &codec in &settings.codecs {
+                paths.push(outputs::rendition_path(
+                    &naming,
+                    &settings.codecs,
+                    width,
+                    codec,
+                ));
+            }
+            if settings.poster.is_some() {
+                paths.push(outputs::poster_path(&naming, width));
+            }
+        }
+        if settings.subtitles.is_some() {
+            paths.push(outputs::subtitles_path(&naming));
+        }
+    }
+
+    paths
+}
+
 fn plan_target(target: usize, settings: &Settings, probe: &Arc<Probe>) -> Vec<Task> {
     let mut tasks = Vec::new();
     let naming = naming(settings);
@@ -318,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn selection_narrows_to_named_target() {
+    fn selection_filters_to_named_target() {
         let mut first = settings();
         first.name = Some("wide".to_string());
         let mut second = settings();
