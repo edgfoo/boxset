@@ -2,6 +2,7 @@
 //! ordering and concurrency; each task's executor turns intent into a
 //! command or call.
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -25,6 +26,8 @@ pub struct ExecutionOutcome {
     pub failed: usize,
     /// The tasks that wrote their output. A failed task is absent.
     pub produced: Vec<TaskId>,
+    /// The ffmpeg commands each task spawned, in the order they ran
+    pub commands: HashMap<TaskId, Vec<String>>,
 }
 
 /// What a worker reports as it goes
@@ -32,6 +35,7 @@ enum Event {
     Started(TaskId),
     Stage(TaskId, &'static str, u32, u32),
     Progress(TaskId, &'static str, f32, f32),
+    Spawned(TaskId, String),
     Finished(TaskId, Result<(), BoxsetError>, Duration, Option<u64>),
 }
 
@@ -83,6 +87,9 @@ pub fn execute(plan: &Plan, reporter: &mut dyn Reporter, jobs: usize) -> Executi
                 }
                 Event::Progress(id, stage, overall, stage_done) => {
                     reporter.task_progress(id, stage, overall, stage_done)
+                }
+                Event::Spawned(id, command) => {
+                    outcome.commands.entry(id).or_default().push(command)
                 }
                 Event::Finished(id, result, elapsed, bytes) => {
                     let outcome_kind = match result {
@@ -169,7 +176,11 @@ fn run_subtitles_task(
 
     let _ = tx.send(Event::Stage(task.id, stages[0], 1, stages.len() as u32));
     let args = command::audio_extract_args(&task.probe.src, &audio, trim);
-    let extracted = run_ffmpeg(&args, |_| {}, 0.0);
+    let mut spawned = None;
+    let extracted = run_ffmpeg(&args, |_| {}, 0.0, &mut spawned);
+    if let Some(spawned) = spawned {
+        let _ = tx.send(Event::Spawned(task.id, spawned));
+    }
     if let Err(source) = extracted {
         let _ = std::fs::remove_file(&audio);
         return Err(fail(TranscribeError::AudioExtract(source)));
@@ -305,6 +316,7 @@ fn run_ffmpeg_task(task: &Task, tx: &mpsc::Sender<Event>) -> Result<(), BoxsetEr
         let name = stage_names.get(index).copied().unwrap_or("encode");
         let _ = tx.send(Event::Stage(task.id, name, index as u32 + 1, total));
 
+        let mut spawned = None;
         let result = run_ffmpeg(
             args,
             |stage_done| {
@@ -315,7 +327,11 @@ fn run_ffmpeg_task(task: &Task, tx: &mpsc::Sender<Event>) -> Result<(), BoxsetEr
                 let _ = tx.send(Event::Progress(task.id, name, overall, stage_done));
             },
             duration,
+            &mut spawned,
         );
+        if let Some(spawned) = spawned {
+            let _ = tx.send(Event::Spawned(task.id, spawned));
+        }
 
         if let Err(source) = result {
             cleanup(&tmp, &passlog);
@@ -345,10 +361,30 @@ fn stage_duration(task: &Task) -> f64 {
     t.end_secs.unwrap_or(full) - t.start_secs
 }
 
+/// Arguments containing spaces are quoted, so a filter chain or an `extra_args`
+/// value reads as one argument rather than several.
+fn render_command(ffmpeg: &Path, args: &[String], trailing: &[&str]) -> String {
+    std::iter::once(ffmpeg.to_string_lossy().into_owned())
+        .chain(args.iter().cloned())
+        .chain(trailing.iter().map(|s| s.to_string()))
+        .map(|part| {
+            if part.contains(' ') {
+                format!("\"{part}\"")
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+const PROGRESS_ARGS: [&str; 3] = ["-progress", "pipe:1", "-nostats"];
+
 fn run_ffmpeg(
     args: &[String],
     mut on_progress: impl FnMut(f32),
     duration: f64,
+    spawned: &mut Option<String>,
 ) -> Result<(), FfmpegError> {
     let Some(ffmpeg) = resolve_tool_path(Tool::Ffmpeg) else {
         return Err(FfmpegError {
@@ -357,9 +393,11 @@ fn run_ffmpeg(
         });
     };
 
+    *spawned = Some(render_command(&ffmpeg, args, &PROGRESS_ARGS));
+
     let mut child = match Command::new(ffmpeg)
         .args(args)
-        .args(["-progress", "pipe:1", "-nostats"])
+        .args(PROGRESS_ARGS)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

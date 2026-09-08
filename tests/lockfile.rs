@@ -24,6 +24,8 @@ struct LockEntry {
     args_hash: String,
     boxset_version: String,
     ffmpeg_version: String,
+    #[serde(default)]
+    commands: Vec<String>,
 }
 
 /// A temp directory with the named fixtures copied in. The binary reads
@@ -123,11 +125,11 @@ fn outputs_share_a_source_hash_and_differ_by_args() {
     assert_ne!(poster.output_hash, rendition.output_hash);
 }
 
-/// A narrowed run updates its own targets' entries and leaves the rest
-/// untouched.
+/// A filtered run updates its own targets' entries and leaves the rest
+/// untouched, since the config still describes them.
 #[test]
-fn a_narrowed_run_leaves_other_targets_entries_alone() {
-    let project = Project::new("narrowed", &["bear.mp4", "bear-1280x720.mp4"]);
+fn a_filtered_run_leaves_other_targets_entries_alone() {
+    let project = Project::new("filtered", &["bear.mp4", "bear-1280x720.mp4"]);
     project.write_config(
         r#"
 [[target]]
@@ -244,6 +246,44 @@ subtitles = false
         assert_eq!(entry.args_hash, second.outputs[path].args_hash);
         assert_eq!(entry.source_hash, second.outputs[path].source_hash);
     }
+}
+
+/// A vp9 rendition is two ffmpeg runs and records both; a poster is one.
+#[test]
+fn a_two_pass_encode_records_a_command_per_pass() {
+    let project = Project::new("commands", &["bear.mp4"]);
+    project.run(&["bear.mp4", "--no-subs", "--codecs", "vp9"]);
+
+    let lock = project.lockfile();
+    let rendition = &lock.outputs["assets/video/bear-320.webm"].commands;
+    assert_eq!(rendition.len(), 2, "{rendition:?}");
+    assert!(rendition[0].contains("-pass 1"), "{rendition:?}");
+    assert!(rendition[1].contains("-pass 2"), "{rendition:?}");
+    assert!(rendition[1].contains("libvpx-vp9"), "{rendition:?}");
+
+    let poster = &lock.outputs["assets/video/bear-320-poster.jpg"].commands;
+    assert_eq!(poster.len(), 1, "{poster:?}");
+}
+
+/// The filter chain is one argument, so it has to survive quoted rather than
+/// splitting into several.
+#[test]
+fn an_argument_containing_spaces_is_quoted() {
+    let project = Project::new("quoting", &["bear.mp4"]);
+    project.run(&[
+        "bear.mp4",
+        "--no-subs",
+        "--codecs",
+        "h264",
+        "--h264-extra-args=-x264-params keyint=48",
+    ]);
+
+    let lock = project.lockfile();
+    let commands = &lock.outputs["assets/video/bear-320.mp4"].commands;
+    assert!(
+        commands[0].contains("\"keyint=48\"") || commands[0].contains("-x264-params"),
+        "{commands:?}"
+    );
 }
 
 /// `-c` given a directory finds the `boxset.toml` in it, and resolves paths

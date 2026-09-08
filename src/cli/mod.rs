@@ -67,7 +67,7 @@ pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()>
 }
 
 /// `boxset build [--target NAME]...`: reconstructs the outputs boxset.toml
-/// describes, narrowed to the named targets if any are given.
+/// describes, filtered to the named targets if any are given.
 pub fn build(
     targets: &[String],
     config_path: Option<&Path>,
@@ -216,7 +216,14 @@ fn run(
         report::closing_line(outcome.succeeded, outcome.failed)
     );
 
-    write_lockfile(&plan, &outcome, &source_hashes, &settings.lock_dir);
+    let all_outputs = boxset::plan::all_output_paths(&resolved);
+    write_lockfile(
+        &plan,
+        &all_outputs,
+        &outcome,
+        &source_hashes,
+        &settings.lock_dir,
+    );
 
     if outcome.failed > 0 {
         std::process::exit(1);
@@ -240,19 +247,16 @@ fn hash_sources(plan: &boxset::Plan) -> HashMap<PathBuf, String> {
     hashes
 }
 
-/// Writes an entry per produced output, beside `boxset.toml`. Entries this
-/// run didn't touch are left alone, so a narrowed `--target` run keeps the
-/// other targets'.
+/// Writes an entry per produced output, beside `boxset.toml`. Entries for
+/// outputs outside `all_outputs` are dropped, so a target the config no longer
+/// describes leaves nothing behind.
 fn write_lockfile(
     plan: &boxset::Plan,
+    all_outputs: &[PathBuf],
     outcome: &boxset::execute::ExecutionOutcome,
     source_hashes: &HashMap<PathBuf, String>,
     dir: &Path,
 ) {
-    if outcome.produced.is_empty() {
-        return;
-    }
-
     let ffmpeg_version = boxset::lock::ffmpeg_version();
     let boxset_version = boxset::lock::boxset_version();
 
@@ -273,12 +277,13 @@ fn write_lockfile(
                     args_hash: boxset::lock::args_hash(&task.work),
                     boxset_version: boxset_version.clone(),
                     ffmpeg_version: ffmpeg_version.clone(),
+                    commands: outcome.commands.get(&task.id).cloned().unwrap_or_default(),
                 },
             ))
         });
 
     let mut lockfile = boxset::Lockfile::read(dir);
-    lockfile.absorb(entries);
+    lockfile.absorb(entries, all_outputs);
 
     // The outputs are already written, so a lockfile that won't write is
     // worth reporting but not worth failing the build over.
