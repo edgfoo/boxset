@@ -3,6 +3,18 @@ name = "boxset"
 version = "0.0.0"
 edition = "2024"
 description = "Prepare video for the web: transcode, poster frames, and subtitles from one command"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/edgfoo/boxset"
+
+# `cargo release <level>` bumps, commits, tags and pushes. Pushing the tag is
+# what starts .github/workflows/release.yml, which builds and publishes.
+[package.metadata.release]
+# boxset ships via Homebrew, not crates.io.
+publish = false
+tag-name = "v{{version}}"
+tag-message = "v{{version}}"
+pre-release-commit-message = "chore(release): v{{version}}"
+allow-branch = ["main"]
 
 [lib]
 name = "boxset"
