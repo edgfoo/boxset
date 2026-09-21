@@ -18,7 +18,7 @@ pub mod transcribe;
 pub mod validate;
 
 pub use config::TargetConfig;
-pub use environment::{Requirement, check_environment, ensure};
+pub use environment::{Requirement, check_environment, ensure, ensure_available};
 pub use error::BoxsetError;
 pub use execute::execute;
 pub use lock::{LockEntry, Lockfile};

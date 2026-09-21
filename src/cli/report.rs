@@ -281,9 +281,28 @@ fn explain(error: &BoxsetError) -> (String, Vec<String>) {
             vec![capitalise(&source.to_string())],
         ),
         BoxsetError::ToolMissing { tool } => (
-            format!("boxset couldn't find {tool:?}"),
-            vec!["boxset ships it, so this install is broken.".to_string()],
+            format!("boxset couldn't find {}", tool_name(*tool)),
+            vec!["It isn't beside boxset or on your PATH.".to_string()],
         ),
+        BoxsetError::FfmpegTooOld { found, minimum } => (
+            format!("this ffmpeg is too old: {found}"),
+            vec![format!(
+                "boxset expects version {}.{} and newer.",
+                minimum.0, minimum.1
+            )],
+        ),
+        BoxsetError::EncodersMissing { encoders } => {
+            let mut detail = vec![
+                "The installed ffmpeg was built without the encoders this build needs:".to_string(),
+            ];
+            for encoder in encoders {
+                detail.push(format!("  {encoder} — {}", encoder_purpose(encoder)));
+            }
+            (
+                format!("ffmpeg is missing {} encoder(s)", encoders.len()),
+                detail,
+            )
+        }
         BoxsetError::ModelFetchFailed { model, source } => (
             format!("boxset couldn't fetch the {model:?} model"),
             vec![capitalise(&source.to_string())],
@@ -320,6 +339,27 @@ fn codec_name(codec: Codec) -> &'static str {
         Codec::H265 => "H.265",
         Codec::Vp9 => "VP9",
         Codec::Av1 => "AV1",
+    }
+}
+
+fn tool_name(tool: boxset::error::Tool) -> &'static str {
+    match tool {
+        boxset::error::Tool::Ffmpeg => "ffmpeg",
+        boxset::error::Tool::Ffprobe => "ffprobe",
+    }
+}
+
+fn encoder_purpose(encoder: &str) -> &'static str {
+    match encoder {
+        "libx264" => "H.264 video",
+        "libx265" => "H.265 video",
+        "libvpx-vp9" => "VP9 video",
+        "libsvtav1" => "AV1 video",
+        "libopus" => "audio in webm, which VP9 uses",
+        "aac" => "audio in mp4",
+        "mjpeg" => "poster images",
+        "pcm_s16le" => "the audio subtitles are transcribed from",
+        _ => "part of this build",
     }
 }
 

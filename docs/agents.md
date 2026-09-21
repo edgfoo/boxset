@@ -137,9 +137,18 @@ arrives, will be another — see [TODOS/TUI.md](TODOS/TUI.md).
 
 ## Dependencies worth knowing about
 
-**ffmpeg and ffprobe** are resolved from a `bin/` directory next to boxset's own
-executable, falling back to `PATH`. A release ships them alongside the binary, so
-install is unzip-and-run. ffmpeg reports almost everything as exit code 1 with an
+**ffmpeg and ffprobe** are installed by Homebrew, not shipped by us — the
+formula declares `depends_on "ffmpeg"`. They are found on `PATH`, after a
+`bin/` directory beside boxset's own executable that nothing currently
+populates. Because the version is not ours to fix, `check_environment`
+fails on an ffmpeg that is too old or lacks an encoder the plan needs, scoped to
+the plan so a missing `libsvtav1` is silent until something asks for av1.
+`MIN_FFMPEG_VERSION` is the only floor — Homebrew has no minimum-version syntax,
+and would not see an ffmpeg earlier on `PATH` in any case. The lockfile's
+recorded version means "this machine already encoded this", not that another
+machine would produce the same bytes.
+
+ffmpeg reports almost everything as exit code 1 with an
 explanation in stderr, so failures are classified by pattern-matching stderr —
 every pattern has a real captured fixture in `tests/fixtures/ffmpeg-stderr/`,
 never handwritten, since a handwritten sample tests the pattern against itself. A
