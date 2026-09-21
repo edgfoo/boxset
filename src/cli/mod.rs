@@ -234,8 +234,10 @@ fn run(
     }
 
     let mut reporter = LineReporter::new(&plan, settings.verbose);
+    let requirements = boxset::check_environment(&plan);
 
     if settings.dry_run {
+        boxset::ensure_available(&requirements)?;
         println!("Would produce {} file(s):", plan.tasks.len());
         for task in &plan.tasks {
             println!("  {}", task.output_path.display());
@@ -243,7 +245,6 @@ fn run(
         return Ok(());
     }
 
-    let requirements = boxset::check_environment(&plan);
     boxset::ensure(&requirements, &mut reporter)?;
 
     let source_hashes = hash_sources(&plan);
