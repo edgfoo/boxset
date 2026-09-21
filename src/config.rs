@@ -218,6 +218,8 @@ pub enum Codec {
     Av1,
 }
 
+pub const ALL_CODECS: [Codec; 4] = [Codec::H264, Codec::H265, Codec::Vp9, Codec::Av1];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Anchor {

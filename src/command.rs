@@ -6,6 +6,28 @@ use crate::config::{Codec, CodecOverrides};
 use crate::settings::{AudioSettings, Crop, Fps, TimeRange, Timestamp};
 use crate::sources::Probe;
 
+pub const MIN_FFMPEG_VERSION: (u32, u32) = (7, 0);
+
+pub fn video_encoder(codec: Codec) -> &'static str {
+    match codec {
+        Codec::H264 => "libx264",
+        Codec::H265 => "libx265",
+        Codec::Av1 => "libsvtav1",
+        Codec::Vp9 => "libvpx-vp9",
+    }
+}
+
+/// vp9 lives in webm, which takes opus rather than aac.
+pub fn audio_encoder(codec: Codec) -> &'static str {
+    match codec {
+        Codec::Vp9 => "libopus",
+        _ => "aac",
+    }
+}
+
+pub const POSTER_ENCODER: &str = "mjpeg";
+pub const AUDIO_EXTRACT_ENCODER: &str = "pcm_s16le";
+
 /// vp9 encodes in two passes; every other codec in one.
 pub fn stages(codec: Codec) -> &'static [&'static str] {
     match codec {
@@ -92,15 +114,9 @@ fn audio_args(audio: Option<&AudioSettings>, codec: Codec) -> Vec<String> {
         return vec!["-an".to_string()];
     };
 
-    // vp9 lives in webm, which takes opus rather than aac.
-    let encoder = match codec {
-        Codec::Vp9 => "libopus",
-        _ => "aac",
-    };
-
     let mut args = vec![
         "-c:a".to_string(),
-        encoder.to_string(),
+        audio_encoder(codec).to_string(),
         "-b:a".to_string(),
         audio.bitrate.clone(),
     ];
@@ -205,7 +221,7 @@ pub fn rendition_args(
             let common = |args: &mut Vec<String>| {
                 args.extend([
                     "-c:v".to_string(),
-                    "libvpx-vp9".to_string(),
+                    video_encoder(codec).to_string(),
                     "-b:v".to_string(),
                     "0".to_string(),
                     "-crf".to_string(),
@@ -261,13 +277,7 @@ pub fn rendition_args(
             let mut args = Vec::new();
             head(&mut args);
 
-            let encoder = match codec {
-                Codec::H264 => "libx264",
-                Codec::H265 => "libx265",
-                Codec::Av1 => "libsvtav1",
-                Codec::Vp9 => unreachable!("vp9 is handled above"),
-            };
-            args.extend(["-c:v".to_string(), encoder.to_string()]);
+            args.extend(["-c:v".to_string(), video_encoder(codec).to_string()]);
             args.extend(["-crf".to_string(), v.crf.to_string()]);
             args.extend(["-preset".to_string(), v.preset.to_string()]);
 
@@ -314,6 +324,7 @@ pub fn poster_args(
     args.extend(["-i".to_string(), src.to_string_lossy().to_string()]);
     args.extend(["-vf".to_string(), video_filters(width, crop, None, probe)]);
     args.extend(["-frames:v".to_string(), "1".to_string()]);
+    args.extend(["-c:v".to_string(), POSTER_ENCODER.to_string()]);
     args.extend(["-q:v".to_string(), "3".to_string()]);
     args.push(tmp.to_string_lossy().to_string());
     args
@@ -335,7 +346,7 @@ pub fn audio_extract_args(src: &Path, tmp: &Path, trim: Option<TimeRange>) -> Ve
     args.extend(["-vn".to_string()]);
     args.extend(["-ac".to_string(), "1".to_string()]);
     args.extend(["-ar".to_string(), "16000".to_string()]);
-    args.extend(["-c:a".to_string(), "pcm_s16le".to_string()]);
+    args.extend(["-c:a".to_string(), AUDIO_EXTRACT_ENCODER.to_string()]);
     args.extend(["-f".to_string(), "s16le".to_string()]);
     args.push(tmp.to_string_lossy().to_string());
     args
