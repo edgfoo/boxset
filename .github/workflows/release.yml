@@ -69,12 +69,13 @@ jobs:
           cp "target/$TARGET/release/boxset" LICENSE-MIT LICENSE-APACHE README.md "$name/"
 
           tar czf "$name.tar.gz" "$name"
-          shasum -a 256 "$name.tar.gz" | cut -d' ' -f1 > "$name.sha256"
+          shasum -a 256 "$name.tar.gz" | cut -d' ' -f1 > "$name.tar.gz.sha256"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.target }}
           path: boxset-v*.tar.gz*
+          if-no-files-found: error
 
   formula:
     needs: [version, build]
@@ -92,8 +93,8 @@ jobs:
         env:
           V: ${{ needs.version.outputs.version }}
         run: |
-          arm=$(cat "dist/boxset-v$V-aarch64-apple-darwin.sha256")
-          x86=$(cat "dist/boxset-v$V-x86_64-apple-darwin.sha256")
+          arm=$(cat "dist/boxset-v$V-aarch64-apple-darwin.tar.gz.sha256")
+          x86=$(cat "dist/boxset-v$V-x86_64-apple-darwin.tar.gz.sha256")
 
           sed -e "s/__VERSION__/$V/g" -e "s/__SHA256_ARM64__/$arm/" -e "s/__SHA256_X86_64__/$x86/" \
             .github/homebrew/boxset.rb.template > boxset.rb
