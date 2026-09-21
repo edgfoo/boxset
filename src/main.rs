@@ -14,6 +14,11 @@ struct Cli {
     /// A single video, prepared with no config read and none written.
     source: Option<std::path::PathBuf>,
 
+    /// Print boxset's version, and the version and path of the ffmpeg and
+    /// ffprobe it resolves.
+    #[arg(long, short = 'V')]
+    version: bool,
+
     #[command(flatten)]
     fields: cli::FieldFlags,
 }
@@ -38,6 +43,11 @@ enum Command {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    if cli.version {
+        cli::print_version();
+        return Ok(());
+    }
 
     match (cli.command, cli.source) {
         (None, None) => cli::print_help(),

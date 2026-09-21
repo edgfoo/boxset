@@ -23,6 +23,10 @@ pub enum BoxsetError {
     },
     #[error("tool missing: {tool:?}")]
     ToolMissing { tool: Tool },
+    #[error("ffmpeg {found} is older than {}.{}", minimum.0, minimum.1)]
+    FfmpegTooOld { found: String, minimum: (u32, u32) },
+    #[error("ffmpeg is missing encoders: {}", encoders.join(", "))]
+    EncodersMissing { encoders: Vec<&'static str> },
     #[error("model fetch failed: {model:?}")]
     ModelFetchFailed {
         model: WhisperModel,

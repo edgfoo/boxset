@@ -13,6 +13,7 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 
 use boxset::config::{Config, TargetConfig};
+use boxset::error::Tool;
 use boxset::plan::Selection;
 use boxset::problem::{ProblemKind, Severity};
 use boxset::sources::{ProbeErrorKind, SourceState, Sources};
@@ -20,6 +21,44 @@ use boxset::sources::{ProbeErrorKind, SourceState, Sources};
 use report::LineReporter;
 
 const DEFAULT_JOBS: usize = 2;
+
+pub fn print_version() {
+    println!("boxset {}", boxset::lock::boxset_version());
+
+    for (tool, name) in [(Tool::Ffmpeg, "ffmpeg"), (Tool::Ffprobe, "ffprobe")] {
+        match boxset::environment::resolve_tool_path(tool) {
+            Some(path) => println!(
+                "{name} {} ({})",
+                boxset::lock::tool_version(&path),
+                path.display()
+            ),
+            None => println!("{name} not found"),
+        }
+    }
+
+    let Some(ffmpeg) = boxset::environment::resolve_tool_path(Tool::Ffmpeg) else {
+        return;
+    };
+    let Some(availability) = boxset::environment::encoder_availability(&ffmpeg) else {
+        return;
+    };
+
+    let (present, missing): (Vec<_>, Vec<_>) = availability.iter().partition(|(_, has)| *has);
+    let names = |list: &[&(&str, bool)]| {
+        list.iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+
+    println!("  encoders: {}", names(&present));
+    if !missing.is_empty() {
+        println!("  missing:  {}", names(&missing));
+    }
+
+    let (major, minor) = boxset::command::MIN_FFMPEG_VERSION;
+    println!("  tested against ffmpeg {major}.{minor} and newer");
+}
 
 pub fn print_help() {
     println!("boxset — prepare video for the web");

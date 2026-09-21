@@ -157,10 +157,14 @@ fn describe_work(work: &TaskWork) -> String {
 
 /// The version string ffmpeg reports, or `unknown` when it can't be read.
 pub fn ffmpeg_version() -> String {
-    let Some(ffmpeg) = crate::environment::resolve_tool_path(Tool::Ffmpeg) else {
-        return "unknown".to_string();
-    };
-    let Ok(output) = std::process::Command::new(ffmpeg).arg("-version").output() else {
+    match crate::environment::resolve_tool_path(Tool::Ffmpeg) {
+        Some(path) => tool_version(&path),
+        None => "unknown".to_string(),
+    }
+}
+
+pub fn tool_version(path: &Path) -> String {
+    let Ok(output) = std::process::Command::new(path).arg("-version").output() else {
         return "unknown".to_string();
     };
     let text = String::from_utf8_lossy(&output.stdout);

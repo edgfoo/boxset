@@ -1,8 +1,9 @@
 //! What a plan needs beyond the tasks themselves: ffmpeg, ffprobe, and any
 //! Whisper model tier not yet cached.
 
+use std::collections::HashSet;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
@@ -15,11 +16,18 @@ use crate::task::TaskWork;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Requirement {
     Tool(Tool),
+    /// An encoder this plan's ffmpeg calls name, absent from `-encoders`.
+    Encoder(&'static str),
+    /// An ffmpeg at least `MIN_FFMPEG_VERSION`, when the one found is older.
+    FfmpegVersion {
+        found: String,
+        minimum: (u32, u32),
+    },
     Model(WhisperModel),
 }
 
-/// Inspect only: touches the filesystem for cache presence but runs no
-/// subprocess and downloads nothing, so a dry run can call it freely.
+/// Inspect only: interrogates ffmpeg and reads the model cache, but writes
+/// nothing and downloads nothing, so a dry run can call it freely.
 pub fn check_environment(plan: &Plan) -> Vec<Requirement> {
     let mut requirements = Vec::new();
 
@@ -27,6 +35,11 @@ pub fn check_environment(plan: &Plan) -> Vec<Requirement> {
         if resolve_tool_path(tool).is_none() {
             requirements.push(Requirement::Tool(tool));
         }
+    }
+
+    if let Some(ffmpeg) = resolve_tool_path(Tool::Ffmpeg) {
+        check_ffmpeg_version(&ffmpeg, &mut requirements);
+        check_encoders(&ffmpeg, plan, &mut requirements);
     }
 
     // Distinct tiers only: several targets asking for `small` share one download.
@@ -43,12 +56,125 @@ pub fn check_environment(plan: &Plan) -> Vec<Requirement> {
     requirements
 }
 
-/// Acquire what's listed. A missing tool is fatal here: boxset ships ffmpeg
-/// and ffprobe, so their absence means a broken install, not something to fetch.
-pub fn ensure(
-    requirements: &[Requirement],
-    reporter: &mut dyn Reporter,
-) -> Result<(), BoxsetError> {
+fn check_ffmpeg_version(ffmpeg: &Path, requirements: &mut Vec<Requirement>) {
+    let found = crate::lock::tool_version(ffmpeg);
+    let Some(version) = parse_version(&found) else {
+        return;
+    };
+    let minimum = crate::command::MIN_FFMPEG_VERSION;
+    if version < minimum {
+        requirements.push(Requirement::FfmpegVersion { found, minimum });
+    }
+}
+
+/// An ffmpeg whose version won't parse is not an ffmpeg that's too old.
+fn parse_version(version: &str) -> Option<(u32, u32)> {
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    Some((major, minor))
+}
+
+fn plan_encoders(plan: &Plan) -> Vec<&'static str> {
+    let mut wanted = Vec::new();
+    let mut want = |encoder: &'static str| {
+        if !wanted.contains(&encoder) {
+            wanted.push(encoder);
+        }
+    };
+
+    for task in &plan.tasks {
+        match &task.work {
+            TaskWork::Rendition { codec, audio, .. } => {
+                want(crate::command::video_encoder(*codec));
+                if audio.is_some() {
+                    want(crate::command::audio_encoder(*codec));
+                }
+            }
+            TaskWork::Poster { .. } => want(crate::command::POSTER_ENCODER),
+            TaskWork::Subtitles { .. } => want(crate::command::AUDIO_EXTRACT_ENCODER),
+        }
+    }
+    wanted
+}
+
+/// Every encoder boxset can name, for reporting an install's health rather
+/// than one plan's needs.
+pub fn all_encoders() -> Vec<&'static str> {
+    let named = crate::config::ALL_CODECS
+        .iter()
+        .flat_map(|&codec| {
+            [
+                crate::command::video_encoder(codec),
+                crate::command::audio_encoder(codec),
+            ]
+        })
+        .chain([
+            crate::command::POSTER_ENCODER,
+            crate::command::AUDIO_EXTRACT_ENCODER,
+        ]);
+
+    let mut all: Vec<&'static str> = Vec::new();
+    for encoder in named {
+        if !all.contains(&encoder) {
+            all.push(encoder);
+        }
+    }
+    all
+}
+
+/// Which of `all_encoders` this ffmpeg has, or `None` if it wouldn't say.
+pub fn encoder_availability(ffmpeg: &Path) -> Option<Vec<(&'static str, bool)>> {
+    let available = available_encoders(ffmpeg)?;
+    Some(
+        all_encoders()
+            .into_iter()
+            .map(|name| (name, available.contains(name)))
+            .collect(),
+    )
+}
+
+fn check_encoders(ffmpeg: &Path, plan: &Plan, requirements: &mut Vec<Requirement>) {
+    let wanted = plan_encoders(plan);
+    if wanted.is_empty() {
+        return;
+    }
+    let Some(available) = available_encoders(ffmpeg) else {
+        return;
+    };
+    for encoder in wanted {
+        if !available.contains(encoder) {
+            requirements.push(Requirement::Encoder(encoder));
+        }
+    }
+}
+
+/// `None` when ffmpeg wouldn't run or said nothing
+fn available_encoders(ffmpeg: &Path) -> Option<HashSet<String>> {
+    let output = std::process::Command::new(ffmpeg)
+        .args(["-hide_banner", "-encoders"])
+        .output()
+        .ok()?;
+
+    // " V....D libx264   libx264 H.264 ...": a six-character flags column,
+    // then the name. The legend above the `------` separator has neither.
+    let names: HashSet<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let flags = fields.next()?;
+            let name = fields.next()?;
+            (flags.len() == 6 && flags.chars().all(|c| c == '.' || c.is_ascii_alphabetic()))
+                .then(|| name.to_string())
+        })
+        .collect();
+
+    (!names.is_empty()).then_some(names)
+}
+
+/// The requirements that can't be acquired, only reported. Downloads nothing,
+/// so a dry run can call it.
+pub fn ensure_available(requirements: &[Requirement]) -> Result<(), BoxsetError> {
     if let Some(Requirement::Tool(tool)) = requirements
         .iter()
         .find(|r| matches!(r, Requirement::Tool(_)))
@@ -56,11 +182,43 @@ pub fn ensure(
         return Err(BoxsetError::ToolMissing { tool: *tool });
     }
 
+    if let Some(Requirement::FfmpegVersion { found, minimum }) = requirements
+        .iter()
+        .find(|r| matches!(r, Requirement::FfmpegVersion { .. }))
+    {
+        return Err(BoxsetError::FfmpegTooOld {
+            found: found.clone(),
+            minimum: *minimum,
+        });
+    }
+
+    // One error naming all of them, rather than failing on the first and
+    // hiding the rest.
+    let encoders: Vec<&'static str> = requirements
+        .iter()
+        .filter_map(|r| match r {
+            Requirement::Encoder(name) => Some(*name),
+            _ => None,
+        })
+        .collect();
+    if !encoders.is_empty() {
+        return Err(BoxsetError::EncodersMissing { encoders });
+    }
+
+    Ok(())
+}
+
+pub fn ensure(
+    requirements: &[Requirement],
+    reporter: &mut dyn Reporter,
+) -> Result<(), BoxsetError> {
+    ensure_available(requirements)?;
+
     let models: Vec<WhisperModel> = requirements
         .iter()
         .filter_map(|r| match r {
             Requirement::Model(m) => Some(*m),
-            Requirement::Tool(_) => None,
+            _ => None,
         })
         .collect();
 
@@ -89,7 +247,10 @@ pub fn resolve_tool_path(tool: Tool) -> Option<PathBuf> {
         Tool::Ffprobe => "ffprobe",
     };
 
+    // Homebrew symlinks bin/boxset to libexec/boxset, so canonicalize to
+    // resolve these links to absolute paths
     if let Ok(exe) = std::env::current_exe()
+        && let Ok(exe) = exe.canonicalize()
         && let Some(dir) = exe.parent()
     {
         let bundled = dir.join("bin").join(name);
@@ -287,6 +448,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::config::Codec;
     use crate::sources::Probe;
     use crate::task::{Task, TaskId, TaskKind};
 
@@ -320,7 +482,7 @@ mod tests {
             .into_iter()
             .filter_map(|r| match r {
                 Requirement::Model(m) => Some(m),
-                Requirement::Tool(_) => None,
+                _ => None,
             })
             .collect()
     }
@@ -347,6 +509,61 @@ mod tests {
     fn plan_without_subtitles_needs_no_model() {
         let plan = Plan { tasks: Vec::new() };
         assert!(models_of(&plan).is_empty());
+    }
+
+    fn rendition_task(codec: Codec, audio: bool) -> Task {
+        let Task { probe, .. } = subtitles_task(0, WhisperModel::Tiny);
+        Task {
+            id: TaskId {
+                target: 0,
+                kind: TaskKind::Rendition { width: 640, codec },
+            },
+            probe,
+            output_path: PathBuf::from("out.mp4"),
+            exists: false,
+            work: TaskWork::Rendition {
+                codec,
+                width: 640,
+                quality: crate::config::Quality::Balanced,
+                overrides: Default::default(),
+                trim: None,
+                crop: None,
+                fps: None,
+                audio: audio.then(|| crate::settings::AudioSettings {
+                    normalize: false,
+                    bitrate: "128k".to_string(),
+                }),
+            },
+        }
+    }
+
+    /// The point of scoping to the plan: an ffmpeg without libsvtav1 is only a
+    /// problem for a run that asked for av1.
+    #[test]
+    fn only_the_codecs_in_the_plan_are_wanted() {
+        let plan = Plan {
+            tasks: vec![
+                rendition_task(Codec::H264, true),
+                rendition_task(Codec::H265, true),
+            ],
+        };
+        assert_eq!(plan_encoders(&plan), ["libx264", "aac", "libx265"]);
+    }
+
+    #[test]
+    fn a_silent_rendition_wants_no_audio_encoder() {
+        let plan = Plan {
+            tasks: vec![rendition_task(Codec::Vp9, false)],
+        };
+        assert_eq!(plan_encoders(&plan), ["libvpx-vp9"]);
+    }
+
+    /// An ffmpeg boxset couldn't interrogate reports `unknown`, which must not
+    /// read as a version older than the floor.
+    #[test]
+    fn an_unreadable_version_is_not_too_old() {
+        assert_eq!(parse_version("unknown"), None);
+        assert_eq!(parse_version(""), None);
     }
 
     #[test]
