@@ -1,0 +1,188 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Read the version from the tag
+        id: v
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          version=${REF#v}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          [[ $version == *-* ]] && echo "prerelease=true" >> "$GITHUB_OUTPUT" || echo "prerelease=false" >> "$GITHUB_OUTPUT"
+
+          # The tag and Cargo.toml must agree, or the formula's `test do`
+          # block fails against a binary reporting a different version.
+          manifest=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          if [[ $manifest != "$version" ]]; then
+            echo "tag v$version disagrees with Cargo.toml $manifest" >&2
+            exit 1
+          fi
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Build and package
+        env:
+          V: ${{ needs.version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          cargo build --release --locked --target "$TARGET"
+
+          name="boxset-v$V-$TARGET"
+          mkdir "$name"
+          cp "target/$TARGET/release/boxset" LICENSE-MIT LICENSE-APACHE README.md "$name/"
+
+          tar czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" | cut -d' ' -f1 > "$name.sha256"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.target }}
+          path: boxset-v*.tar.gz*
+
+  formula:
+    needs: [version, build]
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Render
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          arm=$(cat "dist/boxset-v$V-aarch64-apple-darwin.sha256")
+          x86=$(cat "dist/boxset-v$V-x86_64-apple-darwin.sha256")
+
+          sed -e "s/__VERSION__/$V/g" -e "s/__SHA256_ARM64__/$arm/" -e "s/__SHA256_X86_64__/$x86/" \
+            .github/homebrew/boxset.rb.template > boxset.rb
+
+          if grep -q __ boxset.rb; then echo "unsubstituted placeholder"; exit 1; fi
+          cat boxset.rb
+
+      - name: Audit
+        run: |
+          tap="$(brew --repo)/Library/Taps/edgfoo/homebrew-boxset"
+          mkdir -p "$tap/Formula" && git -C "$tap" init -q
+          cp boxset.rb "$tap/Formula/boxset.rb"
+          brew audit --os=macos --arch=arm edgfoo/boxset/boxset
+          brew audit --os=macos --arch=intel edgfoo/boxset/boxset
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: formula
+          path: boxset.rb
+
+  # Nothing above changed anything public. The release is drafted, so it
+  # stays invisible and deletable until the final step.
+  publish:
+    needs: [version, build, formula]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.version.outputs.version }}
+          PRE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          flags=(--draft --target "$GITHUB_SHA" --title "v$V" --generate-notes)
+          [[ $PRE == true ]] && flags+=(--prerelease)
+          gh release create "v$V" "${flags[@]}" dist/*.tar.gz
+
+      # A short-lived App installation token, scoped to the tap repo alone. It
+      # expires within the hour and never leaves this job.
+      - name: Mint a token for the tap
+        id: tap_token
+        if: needs.version.outputs.prerelease == 'false'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.TAP_APP_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
+          owner: edgfoo
+          repositories: homebrew-boxset
+
+      - name: Update the tap
+        if: needs.version.outputs.prerelease == 'false'
+        env:
+          V: ${{ needs.version.outputs.version }}
+          TAP_TOKEN: ${{ steps.tap_token.outputs.token }}
+        run: |
+          git clone -q "https://x-access-token:$TAP_TOKEN@github.com/edgfoo/homebrew-boxset.git" tap
+          cp dist/boxset.rb tap/Formula/boxset.rb
+          cd tap
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/boxset.rb
+          git commit -qm "boxset $V"
+          git push -q
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.version.outputs.version }}
+          PRE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          if [[ $PRE == true ]]; then
+            gh release edit "v$V" --draft=false --latest=false
+          else
+            gh release edit "v$V" --draft=false --latest
+          fi
+
+      # The tag stays; it came from the maintainer's push, not from here.
+      - name: Roll back the draft on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.version.outputs.version }}
+        run: gh release delete "v$V" --yes || true

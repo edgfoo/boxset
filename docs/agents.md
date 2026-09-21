@@ -167,6 +167,24 @@ looked wrong once — larger files than h264 at the same tier — but measuring 
 VMAF showed they were buying 6.5 points of quality for those bytes. Comparing
 sizes at a fixed CRF says nothing without a quality number beside it.
 
+## Releasing
+
+`cargo release <level>` — patch, minor, major, rc, beta, alpha, release — bumps,
+commits, tags and pushes from a maintainer's Mac. It runs dry by default; add
+`--execute` to do it. Configured under `[package.metadata.release]` in
+`Cargo.toml`; `publish = false` because boxset ships via Homebrew, not crates.io.
+
+Pushing the tag is the trigger. `.github/workflows/release.yml` builds both macOS
+arches, renders `.github/homebrew/boxset.rb.template` with the two tarball
+checksums, audits it, drafts the GitHub release, pushes the formula to the
+`edgfoo/homebrew-boxset` tap, and only then undrafts. Nothing public exists until
+that last step, and a failure deletes the draft. A version containing `-` is
+treated as a prerelease: marked as such on the release, and the tap is left
+alone, so `brew upgrade` never picks one up.
+
+CI never writes to `main` — the only thing that reaches it is the maintainer's
+own push.
+
 ## Working conventions
 
 - Plain, idiomatic Rust. No cleverness for its own sake.
