@@ -164,7 +164,11 @@ pub fn ffmpeg_version() -> String {
 }
 
 pub fn tool_version(path: &Path) -> String {
-    let Ok(output) = std::process::Command::new(path).arg("-version").output() else {
+    let Ok(output) = std::process::Command::new(path)
+        .arg("-version")
+        .stdin(std::process::Stdio::null())
+        .output()
+    else {
         return "unknown".to_string();
     };
     let text = String::from_utf8_lossy(&output.stdout);

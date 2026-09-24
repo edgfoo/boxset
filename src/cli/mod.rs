@@ -1,12 +1,17 @@
 //! The plain-terminal client: flags in, `TargetConfig`/`Selection`/`Sources`
 //! to the backend, lines out. Holds no behaviour the backend lacks.
 
+mod errors;
 mod flags;
-mod report;
+mod live;
+mod plan;
+mod style;
+mod units;
 
 pub use flags::FieldFlags;
 
 use std::collections::{BTreeMap, HashMap};
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -18,7 +23,7 @@ use boxset::plan::Selection;
 use boxset::problem::{ProblemKind, Severity};
 use boxset::sources::{ProbeErrorKind, SourceState, Sources};
 
-use report::LineReporter;
+use live::LiveReporter;
 
 const DEFAULT_JOBS: usize = 2;
 
@@ -77,6 +82,8 @@ struct RunSettings {
     jobs: usize,
     dry_run: bool,
     verbose: bool,
+    /// Skips the confirmation before overwriting existing outputs.
+    yes: bool,
     /// Where the lockfile lives: beside the config, or the cwd for a
     /// single-shot run that has none.
     lock_dir: PathBuf,
@@ -94,6 +101,7 @@ pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()>
         jobs: fields.jobs.unwrap_or(DEFAULT_JOBS),
         dry_run: fields.dry_run,
         verbose: fields.verbose,
+        yes: fields.yes,
         lock_dir: PathBuf::from("."),
     };
     run(
@@ -144,6 +152,7 @@ pub fn build(
         jobs: fields.jobs.or(config.jobs).unwrap_or(DEFAULT_JOBS),
         dry_run: fields.dry_run,
         verbose: fields.verbose,
+        yes: fields.yes,
         lock_dir: dir,
     };
     let selection = Selection {
@@ -167,20 +176,6 @@ fn run(
     settings: &RunSettings,
 ) -> anyhow::Result<()> {
     let paths: Vec<PathBuf> = configs.iter().filter_map(|c| c.src.clone()).collect();
-
-    // Before probing: probing is the wait this announces.
-    let mut names: Vec<String> = configs
-        .iter()
-        .filter(|c| selection.covers_config(c))
-        .filter_map(|c| c.src.as_deref())
-        .map(|p| {
-            p.file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default()
-        })
-        .collect();
-    names.dedup();
-    println!("{}", report::reading_line(&names));
 
     let mut sources = Sources::new();
     sources.request(&paths);
@@ -224,37 +219,48 @@ fn run(
         return Ok(());
     }
 
-    let replacing: Vec<&boxset::task::Task> = plan.tasks.iter().filter(|t| t.exists).collect();
-    if !replacing.is_empty() {
-        println!();
-        println!("  {} files will be overwritten:", replacing.len());
-        for task in replacing {
-            println!("    {}", task.output_path.display());
-        }
-    }
+    let blocks = plan::group(&plan);
+    let targets = plan
+        .tasks
+        .iter()
+        .map(|t| t.id.target)
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    plan::print_plan(&blocks, &settings.out_dir, targets, plan.tasks.len());
 
-    let mut reporter = LineReporter::new(&plan, settings.verbose);
     let requirements = boxset::check_environment(&plan);
 
     if settings.dry_run {
         boxset::ensure_available(&requirements)?;
-        println!("Would produce {} file(s):", plan.tasks.len());
-        for task in &plan.tasks {
-            println!("  {}", task.output_path.display());
-        }
         return Ok(());
     }
 
+    if !confirm(settings.yes)? {
+        return Ok(());
+    }
+
+    let mut reporter = LiveReporter::new(&plan, settings.verbose);
     boxset::ensure(&requirements, &mut reporter)?;
 
     let source_hashes = hash_sources(&plan);
 
+    plan::section("Building");
+    let started = std::time::Instant::now();
     let outcome = boxset::execute(&plan, &mut reporter, settings.jobs);
-    println!();
-    println!(
-        "{}",
-        report::closing_line(outcome.succeeded, outcome.failed)
-    );
+    let wall = started.elapsed();
+    let bytes = written_bytes(&plan, &outcome);
+
+    plan::section(live::closing_section(outcome.failed));
+    for line in live::closing_lines(
+        &plan,
+        &outcome.produced,
+        outcome.failed,
+        bytes,
+        wall,
+        &settings.out_dir,
+    ) {
+        println!("{line}");
+    }
 
     let all_outputs = boxset::plan::all_output_paths(&resolved);
     write_lockfile(
@@ -271,8 +277,41 @@ fn run(
     Ok(())
 }
 
-/// One hash per distinct source, since hashing reads the whole file and
-/// several targets often share one.
+/// Every run is approved.  If not running in a TTY, just proceed.
+fn confirm(yes: bool) -> anyhow::Result<bool> {
+    if yes {
+        return Ok(true);
+    }
+
+    if !std::io::stdin().is_terminal() {
+        return Ok(true);
+    }
+
+    println!();
+    print!("  {} [y/n] ", style::bold("Proceed?"));
+    std::io::stdout().flush()?;
+
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+
+    let answer = answer.trim().to_lowercase();
+    if answer.is_empty() || answer == "y" || answer == "yes" {
+        return Ok(true);
+    }
+
+    println!("  {}", style::dim("Stopped; nothing was encoded."));
+    Ok(false)
+}
+
+fn written_bytes(plan: &boxset::Plan, outcome: &boxset::execute::ExecutionOutcome) -> u64 {
+    plan.tasks
+        .iter()
+        .filter(|task| outcome.produced.contains(&task.id))
+        .filter_map(|task| std::fs::metadata(&task.output_path).ok())
+        .map(|meta| meta.len())
+        .sum()
+}
+
 fn hash_sources(plan: &boxset::Plan) -> HashMap<PathBuf, String> {
     let mut hashes = HashMap::new();
     for task in &plan.tasks {

@@ -24,10 +24,10 @@ URLs. Nothing checks it's URL-safe. This came up on a real project where a sourc
 stem containing a space was reaching the web; `name` fixed that case but can
 reintroduce it.
 
-## `cargo fmt` has never been run repo-wide
+## Cleanup after ctrl-c
 
-Around 30 files are unformatted. Only touched files have been formatted so far,
-to keep diffs honest. Doing it wants to be one commit that changes nothing else.
+Ctrl-c leaves passlogs behind. We need to trap exits and cleanup, or some
+kind of "finally" clause?
 
 ## Untested
 

@@ -153,6 +153,7 @@ fn check_encoders(ffmpeg: &Path, plan: &Plan, requirements: &mut Vec<Requirement
 fn available_encoders(ffmpeg: &Path) -> Option<HashSet<String>> {
     let output = std::process::Command::new(ffmpeg)
         .args(["-hide_banner", "-encoders"])
+        .stdin(std::process::Stdio::null())
         .output()
         .ok()?;
 
@@ -465,6 +466,9 @@ mod tests {
                 duration_secs: 10.0,
                 frame_rate: (25, 1),
                 has_audio: true,
+                video_codec: "h264".to_string(),
+                audio_codec: Some("aac".to_string()),
+                size_bytes: 1_000_000,
             }),
             output_path: PathBuf::from("out.vtt"),
             exists: false,

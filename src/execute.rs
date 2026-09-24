@@ -46,33 +46,37 @@ pub fn execute(plan: &Plan, reporter: &mut dyn Reporter, jobs: usize) -> Executi
 
     reporter.phase(Phase::Encoding);
 
-    // The task list never changes, so workers share one cursor into it rather
-    // than a locked queue.
+    // A worker claims a whole target, not a single task, so one target's
+    // outputs finish together and a client can show a block at a time.
     let cursor = AtomicUsize::new(0);
     let tasks = plan.tasks.as_slice();
+    let groups = target_groups(tasks);
     let (tx, rx) = mpsc::channel::<Event>();
-    let workers = jobs.max(1).min(tasks.len());
+    let workers = jobs.max(1).min(groups.len());
 
     std::thread::scope(|scope| {
         for _ in 0..workers {
             let cursor = &cursor;
+            let groups = &groups;
             let tx = tx.clone();
             scope.spawn(move || {
                 loop {
                     let next = cursor.fetch_add(1, Ordering::Relaxed);
-                    let Some(task) = tasks.get(next) else {
+                    let Some(group) = groups.get(next) else {
                         break;
                     };
 
-                    let _ = tx.send(Event::Started(task.id));
-                    let started = Instant::now();
-                    let result = run_task(task, &tx);
-                    let elapsed = started.elapsed();
-                    let bytes = result
-                        .is_ok()
-                        .then(|| std::fs::metadata(&task.output_path).ok().map(|m| m.len()))
-                        .flatten();
-                    let _ = tx.send(Event::Finished(task.id, result, elapsed, bytes));
+                    for task in &tasks[group.clone()] {
+                        let _ = tx.send(Event::Started(task.id));
+                        let started = Instant::now();
+                        let result = run_task(task, &tx);
+                        let elapsed = started.elapsed();
+                        let bytes = result
+                            .is_ok()
+                            .then(|| std::fs::metadata(&task.output_path).ok().map(|m| m.len()))
+                            .flatten();
+                        let _ = tx.send(Event::Finished(task.id, result, elapsed, bytes));
+                    }
                 }
             });
         }
@@ -117,6 +121,21 @@ pub fn execute(plan: &Plan, reporter: &mut dyn Reporter, jobs: usize) -> Executi
 
         outcome
     })
+}
+
+/// The contiguous run of tasks belonging to each target. `plan` emits targets
+/// in order, so a target's tasks are always adjacent.
+fn target_groups(tasks: &[Task]) -> Vec<std::ops::Range<usize>> {
+    let mut groups: Vec<std::ops::Range<usize>> = Vec::new();
+
+    for (index, task) in tasks.iter().enumerate() {
+        match groups.last_mut() {
+            Some(last) if tasks[last.start].id.target == task.id.target => last.end = index + 1,
+            _ => groups.push(index..index + 1),
+        }
+    }
+
+    groups
 }
 
 /// Written to a temp path and renamed on success, so a failed or interrupted
@@ -398,6 +417,9 @@ fn run_ffmpeg(
     let mut child = match Command::new(ffmpeg)
         .args(args)
         .args(PROGRESS_ARGS)
+        // ffmpeg reads stdin for its interactive keys and puts the terminal
+        // into raw mode to do it, which breaks any prompt of ours that follows.
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -458,4 +480,49 @@ fn run_ffmpeg(
         kind: classify_ffmpeg_failure(&stderr),
         stderr,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sources::Probe;
+    use crate::task::TaskKind;
+
+    fn task(target: usize, width: u32) -> Task {
+        Task {
+            id: TaskId {
+                target,
+                kind: TaskKind::Poster { width },
+            },
+            probe: Arc::new(Probe {
+                src: PathBuf::from("in.mp4"),
+                width: 1920,
+                height: 1080,
+                duration_secs: 10.0,
+                frame_rate: (25, 1),
+                has_audio: true,
+                video_codec: "h264".to_string(),
+                audio_codec: Some("aac".to_string()),
+                size_bytes: 1_000_000,
+            }),
+            output_path: PathBuf::from("out.jpg"),
+            exists: false,
+            work: TaskWork::Poster {
+                width,
+                at: crate::settings::Timestamp(0.0),
+                crop: None,
+            },
+        }
+    }
+
+    #[test]
+    fn each_target_becomes_one_group() {
+        let tasks = vec![task(0, 480), task(0, 960), task(1, 480), task(2, 480)];
+        assert_eq!(target_groups(&tasks), vec![0..2, 2..3, 3..4]);
+    }
+
+    #[test]
+    fn no_tasks_is_no_groups() {
+        assert!(target_groups(&[]).is_empty());
+    }
 }

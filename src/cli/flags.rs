@@ -86,6 +86,9 @@ pub struct FieldFlags {
     pub verbose: bool,
     #[arg(long = "jobs", global = true)]
     pub jobs: Option<usize>,
+    /// Auto-accepts the "proceed" prompt
+    #[arg(short = 'y', long = "yes", global = true)]
+    pub yes: bool,
 }
 
 impl FieldFlags {

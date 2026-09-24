@@ -222,6 +222,9 @@ mod tests {
             duration_secs: 10.0,
             frame_rate: (30, 1),
             has_audio: true,
+            video_codec: "h264".to_string(),
+            audio_codec: Some("aac".to_string()),
+            size_bytes: 1_000_000,
         })
     }
 

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
 
@@ -21,6 +21,11 @@ pub struct Probe {
     pub duration_secs: f64,
     pub frame_rate: (u32, u32),
     pub has_audio: bool,
+    /// ffprobe's `codec_name` for the video stream, e.g. `h264`.
+    pub video_codec: String,
+    /// `None` when the source is silent.
+    pub audio_codec: Option<String>,
+    pub size_bytes: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,6 +187,7 @@ struct FfprobeOutput {
 #[derive(Debug, Deserialize)]
 struct FfprobeStream {
     codec_type: String,
+    codec_name: Option<String>,
     width: Option<u32>,
     height: Option<u32>,
     r_frame_rate: Option<String>,
@@ -190,6 +196,7 @@ struct FfprobeStream {
 #[derive(Debug, Deserialize)]
 struct FfprobeFormat {
     duration: Option<String>,
+    size: Option<String>,
 }
 
 fn probe_path(path: &Path) -> SourceState {
@@ -211,6 +218,7 @@ fn probe_path(path: &Path) -> SourceState {
             "-show_streams",
         ])
         .arg(path)
+        .stdin(Stdio::null())
         .output();
 
     let Ok(output) = output else {
@@ -249,7 +257,18 @@ fn probe_path(path: &Path) -> SourceState {
         return SourceState::Failed(ProbeErrorKind::Unparseable);
     };
 
-    let has_audio = parsed.streams.iter().any(|s| s.codec_type == "audio");
+    let audio_codec = parsed
+        .streams
+        .iter()
+        .find(|s| s.codec_type == "audio")
+        .map(|s| s.codec_name.clone().unwrap_or_else(|| "unknown".to_string()));
+
+    let size_bytes = parsed
+        .format
+        .size
+        .as_deref()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
 
     SourceState::Probed(Probe {
         src: path.to_path_buf(),
@@ -257,7 +276,13 @@ fn probe_path(path: &Path) -> SourceState {
         height,
         duration_secs,
         frame_rate,
-        has_audio,
+        has_audio: audio_codec.is_some(),
+        video_codec: video
+            .codec_name
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string()),
+        audio_codec,
+        size_bytes,
     })
 }
 
@@ -287,6 +312,9 @@ mod probe_tests {
         assert_eq!(probe.height, 180);
         assert!(probe.has_audio);
         assert!(probe.duration_secs > 0.0);
+        assert_eq!(probe.video_codec, "h264");
+        assert_eq!(probe.audio_codec.as_deref(), Some("aac"));
+        assert!(probe.size_bytes > 0);
     }
 
     #[test]
@@ -296,6 +324,7 @@ mod probe_tests {
             panic!("expected Probed, got {state:?}");
         };
         assert!(!probe.has_audio);
+        assert_eq!(probe.audio_codec, None);
     }
 
     #[test]
