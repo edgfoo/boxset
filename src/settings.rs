@@ -105,25 +105,25 @@ pub fn expand_quality(quality: Quality, codec: Codec) -> CodecOverrides {
     use Quality::*;
 
     // CRF values are not consistent between codecs. Each is tuned to match an h264 baseline on
-    // measured quality, so one quality tier produces the same quality across all codecs. VP9 and
-    // AV1 require higher CRFs for the same quality.
+    // measured quality, so one quality tier produces roughly the same quality across all codecs.
+    // VP9 and AV1 require higher CRFs for the same quality.
     let crf: u32 = match (quality, codec) {
-        (Low, H264) => 29,
-        (Balanced, H264) => 23,
-        (High, H264) => 19,
-        (Max, H264) => 16,
-        (Low, Vp9) => 52,
-        (Balanced, Vp9) => 39,
-        (High, Vp9) => 32,
-        (Max, Vp9) => 28,
-        (Low, H265) => 32,
-        (Balanced, H265) => 27,
-        (High, H265) => 23,
-        (Max, H265) => 21,
-        (Low, Av1) => 56,
-        (Balanced, Av1) => 40,
-        (High, Av1) => 31,
-        (Max, Av1) => 24,
+        (Low, H264) => 30,
+        (Balanced, H264) => 26,
+        (High, H264) => 23,
+        (Max, H264) => 20,
+        (Low, Vp9) => 47,
+        (Balanced, Vp9) => 42,
+        (High, Vp9) => 34,
+        (Max, Vp9) => 29,
+        (Low, H265) => 33,
+        (Balanced, H265) => 29,
+        (High, H265) => 26,
+        (Max, H265) => 23,
+        (Low, Av1) => 48,
+        (Balanced, Av1) => 42,
+        (High, Av1) => 34,
+        (Max, Av1) => 28,
     };
 
     let effort = effort(codec);
