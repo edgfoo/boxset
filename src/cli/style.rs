@@ -6,6 +6,7 @@ use boxset::task::TaskKind;
 const VIDEO: &str = "⏵";
 const POSTER: &str = "⚀";
 const SUBTITLES: &str = "┅";
+const SECTION: &str = "◆";
 
 const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
@@ -23,9 +24,8 @@ const RESET: &str = "\x1b[0m";
 /// Decided once: a pipe, a CI log and `NO_COLOR` all get plain text.
 pub fn styled() -> bool {
     static STYLED: OnceLock<bool> = OnceLock::new();
-    *STYLED.get_or_init(|| {
-        std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
-    })
+    *STYLED
+        .get_or_init(|| std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal())
 }
 
 /// Whether output can be redrawn in place
@@ -87,6 +87,42 @@ pub fn dim_gray(text: &str) -> String {
 
 pub fn bold_dim(text: &str) -> String {
     wrap(BOLD_DIM, text)
+}
+
+pub fn section(name: &str) {
+    println!();
+    println!("{} {}", dim(SECTION), bold(name));
+    println!();
+}
+
+/// Pads to a visible width, ignoring the escapes the text may carry.
+pub fn pad(text: &str, width: usize) -> String {
+    let visible = visible_len(text);
+    match visible >= width {
+        true => text.to_string(),
+        false => format!("{text}{}", " ".repeat(width - visible)),
+    }
+}
+
+pub fn visible_len(text: &str) -> usize {
+    let mut len = 0;
+    let mut in_escape = false;
+
+    for ch in text.chars() {
+        if in_escape {
+            in_escape = ch != 'm';
+            continue;
+        }
+
+        if ch == '\x1b' {
+            in_escape = true;
+            continue;
+        }
+
+        len += 1;
+    }
+
+    len
 }
 
 pub fn icon(kind: TaskKind) -> String {

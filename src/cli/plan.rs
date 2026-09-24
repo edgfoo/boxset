@@ -8,11 +8,10 @@ use boxset::plan::Plan;
 use boxset::sources::Probe;
 use boxset::task::TaskKind;
 
-use super::style::{bold, bold_dim, dim, dim_gray, icon, yellow};
+use super::style::{bold, bold_dim, dim, dim_gray, icon, pad, section, visible_len, yellow};
 use super::units::{duration, filename, size};
 
 const OVERWRITE_MARK: &str = "ˣ";
-const SECTION: &str = "◆";
 
 /// One source and every target planned from it
 pub struct SourceBlock {
@@ -123,12 +122,6 @@ pub fn group(plan: &Plan) -> Vec<SourceBlock> {
     blocks
 }
 
-pub fn section(name: &str) {
-    println!();
-    println!("{} {}", dim(SECTION), bold(name));
-    println!();
-}
-
 /// Max width of complete source and output lines. If exceeded, outputs are
 /// printed one-per-line.
 const MAX_WIDTH: usize = 120;
@@ -162,8 +155,7 @@ pub fn print_plan(blocks: &[SourceBlock], out_dir: &Path, targets: usize, output
         .iter()
         .flat_map(|block| &block.targets)
         .any(|target| {
-            output_count(target) <= STACK_BELOW
-                || lead + GUTTER + grid_width(target) > MAX_WIDTH
+            output_count(target) <= STACK_BELOW || lead + GUTTER + grid_width(target) > MAX_WIDTH
         });
 
     println!();
@@ -197,7 +189,8 @@ fn source_lines(block: &SourceBlock) -> Vec<String> {
     let mut lines = vec![
         filename(&probe.src),
         dim(&format!("{}x{}", probe.width, probe.height)),
-        dim(&format!("{} {}",
+        dim(&format!(
+            "{} {}",
             duration(probe.duration_secs),
             size(Some(probe.size_bytes))
         )),
@@ -328,32 +321,6 @@ fn target_lines(target: &TargetOutputs, stacked: bool) -> Vec<String> {
 
 fn cell_text(cell: &Cell) -> String {
     format!("{} {}{}", cell.icon, cell.name, mark(cell.exists))
-}
-
-/// Pads to a visible width, ignoring the escapes a marker may carry.
-fn pad(text: &str, width: usize) -> String {
-    let visible = visible_len(text);
-    match visible >= width {
-        true => text.to_string(),
-        false => format!("{text}{}", " ".repeat(width - visible)),
-    }
-}
-
-fn visible_len(text: &str) -> usize {
-    let mut len = 0;
-    let mut in_escape = false;
-    for ch in text.chars() {
-        if in_escape {
-            in_escape = ch != 'm';
-            continue;
-        }
-        if ch == '\x1b' {
-            in_escape = true;
-            continue;
-        }
-        len += 1;
-    }
-    len
 }
 
 fn mark(exists: bool) -> String {

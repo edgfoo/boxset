@@ -3,12 +3,14 @@
 
 mod errors;
 mod flags;
+mod help;
 mod live;
 mod plan;
 mod style;
 mod units;
 
 pub use flags::FieldFlags;
+pub use help::{print_build_help, print_help, print_summary};
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::{IsTerminal, Write};
@@ -65,16 +67,6 @@ pub fn print_version() {
     println!("  tested against ffmpeg {major}.{minor} and newer");
 }
 
-pub fn print_help() {
-    println!("boxset — prepare video for the web");
-    println!();
-    println!("  boxset <video>   prepare one video");
-    println!("  boxset build     rebuild everything boxset.toml describes");
-    println!("  boxset studio    guided setup");
-    println!();
-    println!("Run --help for the full flag list.");
-}
-
 /// How this invocation runs, as opposed to what its targets are: flags win
 /// over the config file's project-wide keys.
 struct RunSettings {
@@ -89,8 +81,7 @@ struct RunSettings {
     lock_dir: PathBuf,
 }
 
-/// `boxset video.mp4`: one positional source, described entirely by flags.
-/// Reads no config, writes none.
+/// `boxset video.mp4`: one positional source, described entirely by flags
 pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()> {
     let config = fields.to_target_config(source.to_path_buf())?;
     let settings = RunSettings {
@@ -244,13 +235,13 @@ fn run(
 
     let source_hashes = hash_sources(&plan);
 
-    plan::section("Building");
+    style::section("Building");
     let started = std::time::Instant::now();
     let outcome = boxset::execute(&plan, &mut reporter, settings.jobs);
     let wall = started.elapsed();
     let bytes = written_bytes(&plan, &outcome);
 
-    plan::section(live::closing_section(outcome.failed));
+    style::section(live::closing_section(outcome.failed));
     for line in live::closing_lines(
         &plan,
         &outcome.produced,

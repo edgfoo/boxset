@@ -6,7 +6,12 @@ mod cli;
 /// not a subcommand tree, so the positional source and the subcommands are
 /// both optional here and main.rs picks between them.
 #[derive(Parser)]
-#[command(name = "boxset", about = "Prepare video for the web")]
+#[command(
+    name = "boxset",
+    about = "Prepare video for the web",
+    disable_help_flag = true,
+    disable_help_subcommand = true
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -18,6 +23,9 @@ struct Cli {
     /// ffprobe it resolves.
     #[arg(long, short = 'V')]
     version: bool,
+
+    #[arg(long, short = 'h', global = true)]
+    help: bool,
 
     #[command(flatten)]
     fields: cli::FieldFlags,
@@ -42,7 +50,36 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
+    // `boxset help` and `boxset build help`: clap would read the word as a
+    // source file, or reject it outright after a subcommand. Only the leading
+    // words are checked, so a file genuinely named `help` still works.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["help"] => {
+            cli::print_help();
+            return Ok(());
+        }
+        ["build", "help"] => {
+            cli::print_build_help();
+            return Ok(());
+        }
+        _ => {}
+    }
+
     let cli = Cli::parse();
+
+    if cli.help {
+        match cli.command {
+            Some(Command::Build { .. }) => cli::print_build_help(),
+            _ => cli::print_help(),
+        }
+        return Ok(());
+    }
 
     if cli.version {
         cli::print_version();
@@ -50,7 +87,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     match (cli.command, cli.source) {
-        (None, None) => cli::print_help(),
+        (None, None) => cli::print_summary(),
         (None, Some(source)) => cli::run_single_shot(&source, &cli.fields)?,
         (Some(Command::Studio), _) => todo!("launch the TUI"),
         (

@@ -91,45 +91,74 @@ pub struct FieldFlags {
     pub yes: bool,
 }
 
+#[cfg(test)]
+pub const RUN_FLAGS: &[&str] = &[
+    "--out-dir",
+    "--dry-run",
+    "--verbose",
+    "--jobs",
+    "-y",
+    "--yes",
+    "--help",
+    "-h",
+    "-V",
+    "--version",
+];
+
+#[cfg(test)]
+pub const BUILD_FLAGS: &[&str] = &["--target", "--config", "-c"];
+
+/// Every field flag, paired with whether this invocation gave it. One missing
+/// is one `build` accepts and silently ignores.
+fn field_flags(fields: &FieldFlags) -> [(&'static str, bool); 29] {
+    [
+        ("--name", fields.name.is_some()),
+        ("--quality", fields.quality.is_some()),
+        ("--codecs", fields.codecs.is_some()),
+        ("--crop", fields.crop.is_some()),
+        ("--crop-anchor", fields.crop_anchor.is_some()),
+        ("--widths", fields.widths.is_some()),
+        ("--trim", fields.trim.is_some()),
+        ("--fps", fields.fps.is_some()),
+        ("--no-audio", fields.no_audio),
+        ("--no-poster", fields.no_poster),
+        ("--poster", fields.poster.is_some()),
+        ("--no-subs", fields.no_subs),
+        ("--subs-lang", fields.subs_lang.is_some()),
+        ("--subs-model", fields.subs_model.is_some()),
+        ("--h264-crf", fields.h264_crf.is_some()),
+        ("--h264-preset", fields.h264_preset.is_some()),
+        ("--h264-profile", fields.h264_profile.is_some()),
+        ("--h264-extra-args", fields.h264_extra_args.is_some()),
+        ("--h265-crf", fields.h265_crf.is_some()),
+        ("--h265-preset", fields.h265_preset.is_some()),
+        ("--h265-profile", fields.h265_profile.is_some()),
+        ("--h265-extra-args", fields.h265_extra_args.is_some()),
+        ("--vp9-crf", fields.vp9_crf.is_some()),
+        ("--vp9-cpu-used", fields.vp9_cpu_used.is_some()),
+        ("--vp9-row-mt", fields.vp9_row_mt.is_some()),
+        ("--vp9-extra-args", fields.vp9_extra_args.is_some()),
+        ("--av1-crf", fields.av1_crf.is_some()),
+        ("--av1-preset", fields.av1_preset.is_some()),
+        ("--av1-extra-args", fields.av1_extra_args.is_some()),
+    ]
+}
+
+/// The name of every field flag, whether given or not.
+#[cfg(test)]
+pub fn field_flag_names() -> impl Iterator<Item = &'static str> {
+    field_flags(&FieldFlags::default())
+        .into_iter()
+        .map(|(flag, _)| flag)
+}
+
 impl FieldFlags {
-    /// The first field flag given, named as the user spelled it. Every field
-    /// flag is listed here: one missing is one `build` accepts and ignores.
+    /// The first field flag given, named as the user spelled it.
     pub fn first_field_flag(&self) -> Option<&'static str> {
-        let given: &[(&'static str, bool)] = &[
-            ("--name", self.name.is_some()),
-            ("--quality", self.quality.is_some()),
-            ("--codecs", self.codecs.is_some()),
-            ("--crop", self.crop.is_some()),
-            ("--crop-anchor", self.crop_anchor.is_some()),
-            ("--widths", self.widths.is_some()),
-            ("--trim", self.trim.is_some()),
-            ("--fps", self.fps.is_some()),
-            ("--no-audio", self.no_audio),
-            ("--no-poster", self.no_poster),
-            ("--poster", self.poster.is_some()),
-            ("--no-subs", self.no_subs),
-            ("--subs-lang", self.subs_lang.is_some()),
-            ("--subs-model", self.subs_model.is_some()),
-            ("--h264-crf", self.h264_crf.is_some()),
-            ("--h264-preset", self.h264_preset.is_some()),
-            ("--h264-profile", self.h264_profile.is_some()),
-            ("--h264-extra-args", self.h264_extra_args.is_some()),
-            ("--h265-crf", self.h265_crf.is_some()),
-            ("--h265-preset", self.h265_preset.is_some()),
-            ("--h265-profile", self.h265_profile.is_some()),
-            ("--h265-extra-args", self.h265_extra_args.is_some()),
-            ("--vp9-crf", self.vp9_crf.is_some()),
-            ("--vp9-cpu-used", self.vp9_cpu_used.is_some()),
-            ("--vp9-row-mt", self.vp9_row_mt.is_some()),
-            ("--vp9-extra-args", self.vp9_extra_args.is_some()),
-            ("--av1-crf", self.av1_crf.is_some()),
-            ("--av1-preset", self.av1_preset.is_some()),
-            ("--av1-extra-args", self.av1_extra_args.is_some()),
-        ];
-        given
-            .iter()
-            .find(|&&(_, given)| given)
-            .map(|&(flag, _)| flag)
+        field_flags(self)
+            .into_iter()
+            .find(|(_, given)| *given)
+            .map(|(flag, _)| flag)
     }
 
     /// Flags to a `TargetConfig`, so a single-shot run and a config entry
