@@ -248,7 +248,9 @@ impl LiveReporter {
                 lines.push(format!("    {}", dim(&line)));
             }
 
-            if self.verbose && let BoxsetError::EncodeFailed { source, .. } = error {
+            if self.verbose
+                && let BoxsetError::EncodeFailed { source, .. } = error
+            {
                 for line in source.stderr.lines() {
                     lines.push(format!("    {}", dim(line)));
                 }
@@ -317,10 +319,7 @@ fn made(plan: &Plan, produced: &[TaskId]) -> Vec<String> {
     };
 
     [
-        (
-            count(|k| matches!(k, TaskKind::Rendition { .. })),
-            "video",
-        ),
+        (count(|k| matches!(k, TaskKind::Rendition { .. })), "video"),
         (count(|k| matches!(k, TaskKind::Poster { .. })), "poster"),
         (count(|k| matches!(k, TaskKind::Subtitles)), "VTT"),
     ]

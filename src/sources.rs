@@ -261,7 +261,11 @@ fn probe_path(path: &Path) -> SourceState {
         .streams
         .iter()
         .find(|s| s.codec_type == "audio")
-        .map(|s| s.codec_name.clone().unwrap_or_else(|| "unknown".to_string()));
+        .map(|s| {
+            s.codec_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string())
+        });
 
     let size_bytes = parsed
         .format

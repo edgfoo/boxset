@@ -94,7 +94,6 @@ pub fn explain(error: &BoxsetError) -> (String, Vec<String>) {
     }
 }
 
-
 fn tool_name(tool: boxset::error::Tool) -> &'static str {
     match tool {
         boxset::error::Tool::Ffmpeg => "ffmpeg",
