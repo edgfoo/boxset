@@ -40,6 +40,13 @@ pub fn duration(secs: f64) -> String {
     format!("{}:{:02}", secs / 60, secs % 60)
 }
 
+pub fn plural(count: usize, word: &str) -> String {
+    match count {
+        1 => word.to_string(),
+        _ => format!("{word}s"),
+    }
+}
+
 pub fn size(bytes: Option<u64>) -> String {
     let Some(bytes) = bytes else {
         return String::new();

@@ -94,6 +94,17 @@ pub fn args_hash(work: &TaskWork) -> String {
     hex(&hasher.finalize())
 }
 
+/// Changing any of these renderings invalidates every existing lockfile entry.
+fn describe_crop(crop: Option<crate::settings::Crop>) -> String {
+    crop.map(|c| format!("{}:{}:{:?}", c.ratio.0, c.ratio.1, c.anchor))
+        .unwrap_or_else(|| "none".to_string())
+}
+
+fn describe_trim(trim: Option<crate::settings::TimeRange>) -> String {
+    trim.map(|t| format!("{}-{:?}", t.start_secs, t.end_secs))
+        .unwrap_or_else(|| "none".to_string())
+}
+
 /// A stable rendering of a `TaskWork`. Written out by hand rather than derived
 /// from `Debug`, whose output is explicitly not a stable format.
 fn describe_work(work: &TaskWork) -> String {
@@ -108,12 +119,8 @@ fn describe_work(work: &TaskWork) -> String {
             fps,
             audio,
         } => {
-            let crop = crop
-                .map(|c| format!("{}:{}:{:?}", c.ratio.0, c.ratio.1, c.anchor))
-                .unwrap_or_else(|| "none".to_string());
-            let trim = trim
-                .map(|t| format!("{}-{:?}", t.start_secs, t.end_secs))
-                .unwrap_or_else(|| "none".to_string());
+            let crop = describe_crop(*crop);
+            let trim = describe_trim(*trim);
             let fps = fps
                 .map(|f| format!("{}/{}", f.num, f.den))
                 .unwrap_or_else(|| "source".to_string());
@@ -134,9 +141,7 @@ fn describe_work(work: &TaskWork) -> String {
             )
         }
         TaskWork::Poster { width, at, crop } => {
-            let crop = crop
-                .map(|c| format!("{}:{}:{:?}", c.ratio.0, c.ratio.1, c.anchor))
-                .unwrap_or_else(|| "none".to_string());
+            let crop = describe_crop(*crop);
             format!("poster width={width} at={} crop={crop}", at.0)
         }
         TaskWork::Subtitles {
@@ -145,9 +150,7 @@ fn describe_work(work: &TaskWork) -> String {
             trim,
             extra_args,
         } => {
-            let trim = trim
-                .map(|t| format!("{}-{:?}", t.start_secs, t.end_secs))
-                .unwrap_or_else(|| "none".to_string());
+            let trim = describe_trim(*trim);
             format!(
                 "subtitles language={language:?} model={model:?} trim={trim} extra={extra_args:?}"
             )
@@ -183,7 +186,7 @@ pub fn boxset_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 

@@ -63,6 +63,30 @@ pub fn subtitles_path(naming: &Naming) -> PathBuf {
     naming.join(format!("{}.vtt", naming.name_or_source_stem()))
 }
 
+pub fn target_output_paths(
+    naming: &Naming,
+    widths: &[u32],
+    codecs: &[Codec],
+    poster: bool,
+    subtitles: bool,
+) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    for &width in widths {
+        for &codec in codecs {
+            paths.push(rendition_path(naming, codecs, width, codec));
+        }
+        if poster {
+            paths.push(poster_path(naming, width));
+        }
+    }
+    if subtitles {
+        paths.push(subtitles_path(naming));
+    }
+
+    paths
+}
+
 pub fn codec_suffix(codec: Codec) -> &'static str {
     match codec {
         Codec::H264 => "h264",

@@ -16,7 +16,7 @@ use boxset::task::{TaskId, TaskKind};
 
 use super::errors::explain;
 use super::style::{bold, bold_green, dim, gray, icon, interactive, red};
-use super::units::{directory, elapsed, filename, size};
+use super::units::{directory, elapsed, filename, plural, size};
 
 const CURSOR_UP: &str = "\x1b[A";
 const CLEAR_LINE: &str = "\x1b[2K";
@@ -371,13 +371,6 @@ pub fn closing_section(failed: usize) -> &'static str {
     match failed {
         0 => "That's a wrap",
         _ => "Cut",
-    }
-}
-
-fn plural(count: usize, word: &str) -> String {
-    match count {
-        1 => word.to_string(),
-        _ => format!("{word}s"),
     }
 }
 

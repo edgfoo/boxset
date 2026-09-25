@@ -280,8 +280,7 @@ fn check_unknown_fields(index: usize, config: &TargetConfig, problems: &mut Vec<
     }
 }
 
-/// Every path a target claims: a rendition per width per codec, a poster per
-/// width, and one subtitle track.
+/// `None` when the source hasn't been probed, so no ladder can be derived.
 fn output_paths(
     config: &TargetConfig,
     out_dir: &Path,
@@ -309,19 +308,13 @@ fn output_paths(
         name: config.name.as_deref(),
     };
 
-    let mut paths = Vec::new();
-    for width in widths {
-        for &codec in &codecs {
-            paths.push(outputs::rendition_path(&naming, &codecs, width, codec));
-        }
-        if !matches!(config.poster, Some(PosterField::Off(false))) {
-            paths.push(outputs::poster_path(&naming, width));
-        }
-    }
-    if !matches!(config.subtitles, Some(SubtitlesField::Off(false))) {
-        paths.push(outputs::subtitles_path(&naming));
-    }
-    Some(paths)
+    Some(outputs::target_output_paths(
+        &naming,
+        &widths,
+        &codecs,
+        !matches!(config.poster, Some(PosterField::Off(false))),
+        !matches!(config.subtitles, Some(SubtitlesField::Off(false))),
+    ))
 }
 
 /// `None` for a malformed ratio, which is reported separately; here it just

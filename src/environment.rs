@@ -75,52 +75,47 @@ fn parse_version(version: &str) -> Option<(u32, u32)> {
     Some((major, minor))
 }
 
-fn plan_encoders(plan: &Plan) -> Vec<&'static str> {
-    let mut wanted = Vec::new();
-    let mut want = |encoder: &'static str| {
-        if !wanted.contains(&encoder) {
-            wanted.push(encoder);
-        }
-    };
-
-    for task in &plan.tasks {
-        match &task.work {
-            TaskWork::Rendition { codec, audio, .. } => {
-                want(crate::command::video_encoder(*codec));
-                if audio.is_some() {
-                    want(crate::command::audio_encoder(*codec));
-                }
-            }
-            TaskWork::Poster { .. } => want(crate::command::POSTER_ENCODER),
-            TaskWork::Subtitles { .. } => want(crate::command::AUDIO_EXTRACT_ENCODER),
+/// First occurrence wins, so the order an install is reported in stays stable.
+fn deduplicated(names: impl Iterator<Item = &'static str>) -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for name in names {
+        if !out.contains(&name) {
+            out.push(name);
         }
     }
-    wanted
+    out
 }
 
-/// Every encoder boxset can name, for reporting an install's health rather
-/// than one plan's needs.
-pub fn all_encoders() -> Vec<&'static str> {
-    let named = crate::config::ALL_CODECS
-        .iter()
-        .flat_map(|&codec| {
-            [
-                crate::command::video_encoder(codec),
-                crate::command::audio_encoder(codec),
-            ]
-        })
-        .chain([
-            crate::command::POSTER_ENCODER,
-            crate::command::AUDIO_EXTRACT_ENCODER,
-        ]);
-
-    let mut all: Vec<&'static str> = Vec::new();
-    for encoder in named {
-        if !all.contains(&encoder) {
-            all.push(encoder);
+fn plan_encoders(plan: &Plan) -> Vec<&'static str> {
+    deduplicated(plan.tasks.iter().flat_map(|task| match &task.work {
+        TaskWork::Rendition { codec, audio, .. } => {
+            let mut wanted = vec![crate::command::video_encoder(*codec)];
+            if audio.is_some() {
+                wanted.push(crate::command::audio_encoder(*codec));
+            }
+            wanted
         }
-    }
-    all
+        TaskWork::Poster { .. } => vec![crate::command::POSTER_ENCODER],
+        TaskWork::Subtitles { .. } => vec![crate::command::AUDIO_EXTRACT_ENCODER],
+    }))
+}
+
+/// Every encoder boxset can name, whatever any one plan needs.
+pub fn all_encoders() -> Vec<&'static str> {
+    deduplicated(
+        crate::config::ALL_CODECS
+            .iter()
+            .flat_map(|&codec| {
+                [
+                    crate::command::video_encoder(codec),
+                    crate::command::audio_encoder(codec),
+                ]
+            })
+            .chain([
+                crate::command::POSTER_ENCODER,
+                crate::command::AUDIO_EXTRACT_ENCODER,
+            ]),
+    )
 }
 
 /// Which of `all_encoders` this ffmpeg has, or `None` if it wouldn't say.
@@ -410,7 +405,7 @@ fn download_verified(
     }
     file.flush()?;
 
-    let actual = hex(&hasher.finalize());
+    let actual = crate::lock::hex(&hasher.finalize());
     let expected = model_sha256(tier);
     if actual != expected {
         return Err(FetchError::ChecksumMismatch {
@@ -420,10 +415,6 @@ fn download_verified(
     }
 
     Ok(())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub fn remove_model(tier: WhisperModel) -> Result<(), BoxsetError> {

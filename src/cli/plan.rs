@@ -9,7 +9,7 @@ use boxset::sources::Probe;
 use boxset::task::TaskKind;
 
 use super::style::{bold, bold_dim, dim, dim_gray, icon, pad, section, visible_len, yellow};
-use super::units::{directory, duration, filename, size};
+use super::units::{directory, duration, filename, plural, size};
 
 const OVERWRITE_MARK: &str = "ˣ";
 
@@ -343,11 +343,4 @@ fn overwritten_count(blocks: &[SourceBlock]) -> usize {
             grid + subs
         })
         .sum()
-}
-
-fn plural(count: usize, word: &str) -> String {
-    match count {
-        1 => word.to_string(),
-        _ => format!("{word}s"),
-    }
 }
