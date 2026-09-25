@@ -30,7 +30,6 @@ pub struct ExecutionOutcome {
     pub commands: HashMap<TaskId, Vec<String>>,
 }
 
-/// What a worker reports as it goes
 enum Event {
     Started(TaskId),
     Stage(TaskId, &'static str, u32, u32),

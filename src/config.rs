@@ -8,7 +8,6 @@ use serde::Deserialize;
 pub const CONFIG_FILE: &str = "boxset.toml";
 
 /// The whole config file: a flat list of targets plus the project-wide keys.
-///
 /// `targets` holds what each `[[target]]` literally says, unmerged.
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -29,18 +28,16 @@ fn default_out_dir() -> PathBuf {
     PathBuf::from("export")
 }
 
-/// Resolves `path` against `base`, leaving absolute paths alone.
-pub fn against(base: &Path, path: &Path) -> PathBuf {
+pub fn resolve_against(base: &Path, path: &Path) -> PathBuf {
     match path.is_absolute() {
         true => path.to_path_buf(),
-        false => tidy(&base.join(path)),
+        false => fold_dot_segments(&base.join(path)),
     }
 }
 
-/// Folds away `.` and `x/..` so joined paths read as someone would write them.
-/// Doesn't look at the filesystem, so a `..` that would step out of a symlinked
-/// directory is left alone.
-pub fn tidy(path: &Path) -> PathBuf {
+/// Purely textual, so a `..` that would step out of a symlinked directory is
+/// left alone.
+pub fn fold_dot_segments(path: &Path) -> PathBuf {
     let mut out: Vec<Component> = Vec::new();
     for part in path.components() {
         match part {
@@ -62,10 +59,10 @@ impl Config {
     /// config was read from, so a config describes the same build wherever
     /// boxset is run from.
     pub fn rebase(&mut self, dir: &Path) {
-        self.out_dir = against(dir, &self.out_dir);
+        self.out_dir = resolve_against(dir, &self.out_dir);
         for target in &mut self.targets {
             if let Some(src) = &target.src {
-                target.src = Some(against(dir, src));
+                target.src = Some(resolve_against(dir, src));
             }
         }
     }
@@ -417,15 +414,15 @@ mod tests {
     fn resolving_folds_away_dot_segments() {
         let dir = Path::new("videos");
         assert_eq!(
-            against(dir, Path::new("../src/assets")),
+            resolve_against(dir, Path::new("../src/assets")),
             PathBuf::from("src/assets")
         );
         assert_eq!(
-            against(dir, Path::new("./clip.mp4")),
+            resolve_against(dir, Path::new("./clip.mp4")),
             PathBuf::from("videos/clip.mp4")
         );
         assert_eq!(
-            against(Path::new(""), Path::new("clip.mp4")),
+            resolve_against(Path::new(""), Path::new("clip.mp4")),
             PathBuf::from("clip.mp4")
         );
     }
@@ -435,11 +432,11 @@ mod tests {
     #[test]
     fn a_leading_parent_segment_is_kept() {
         assert_eq!(
-            against(Path::new("."), Path::new("../out")),
+            resolve_against(Path::new("."), Path::new("../out")),
             PathBuf::from("../out")
         );
         assert_eq!(
-            against(Path::new("videos"), Path::new("../../out")),
+            resolve_against(Path::new("videos"), Path::new("../../out")),
             PathBuf::from("../out")
         );
     }
@@ -447,7 +444,7 @@ mod tests {
     #[test]
     fn an_absolute_path_ignores_the_base() {
         assert_eq!(
-            against(Path::new("videos"), Path::new("/tmp/out")),
+            resolve_against(Path::new("videos"), Path::new("/tmp/out")),
             PathBuf::from("/tmp/out")
         );
     }

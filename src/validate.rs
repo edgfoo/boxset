@@ -10,9 +10,6 @@ use crate::outputs::{self, Naming};
 use crate::problem::{Problem, ProblemKind, Severity};
 use crate::sources::{ProbeErrorKind, SourceLookup, SourceState};
 
-/// Fields a `[[target]]` entry may set. Used both for the top-level-key check
-/// (a target field written at the top level) and for suggesting a spelling
-/// when a target has an unknown field.
 const TARGET_FIELDS: &[&str] = &[
     "src",
     "name",
@@ -211,7 +208,7 @@ fn check_malformed_values(index: usize, config: &TargetConfig, problems: &mut Ve
             Crop::Bare(ratio) => ratio,
             Crop::Anchored { ratio, .. } => ratio,
         };
-        if crate::resolve::ratio(raw).is_none() {
+        if crate::resolve::parse_ratio(raw).is_none() {
             malformed(raw, "an aspect ratio like 16:9", "crop");
         }
     }
@@ -221,7 +218,7 @@ fn check_malformed_values(index: usize, config: &TargetConfig, problems: &mut Ve
             .into_iter()
             .flatten()
         {
-            if crate::resolve::timestamp(raw).is_none() {
+            if crate::resolve::parse_timestamp(raw).is_none() {
                 malformed(raw, "a timestamp like 00:00:04 or 4.5", "trim");
             }
         }
@@ -229,7 +226,7 @@ fn check_malformed_values(index: usize, config: &TargetConfig, problems: &mut Ve
 
     if let Some(PosterField::Settings(poster)) = &config.poster
         && let Some(raw) = poster.at.as_deref()
-        && crate::resolve::timestamp(raw).is_none()
+        && crate::resolve::parse_timestamp(raw).is_none()
     {
         malformed(raw, "a timestamp like 00:00:04 or 4.5", "poster");
     }
@@ -335,7 +332,7 @@ fn try_resolve_crop(crop: &Crop) -> Option<crate::settings::Crop> {
         Crop::Anchored { ratio, anchor } => (ratio.as_str(), *anchor),
     };
     Some(crate::settings::Crop {
-        ratio: crate::resolve::ratio(raw)?,
+        ratio: crate::resolve::parse_ratio(raw)?,
         anchor,
     })
 }

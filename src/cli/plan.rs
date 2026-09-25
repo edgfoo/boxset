@@ -13,7 +13,6 @@ use super::units::{directory, duration, filename, size};
 
 const OVERWRITE_MARK: &str = "ˣ";
 
-/// One source and every target planned from it
 pub struct SourceBlock {
     probe: Probe,
     targets: Vec<TargetOutputs>,
@@ -60,8 +59,7 @@ fn column_of(kind: TaskKind) -> Option<(u32, usize)> {
     }
 }
 
-/// Groups the plan by source, then by target
-pub fn group(plan: &Plan) -> Vec<SourceBlock> {
+pub fn group_by_source(plan: &Plan) -> Vec<SourceBlock> {
     let mut blocks: Vec<SourceBlock> = Vec::new();
     let mut seen: Vec<(usize, usize, usize)> = Vec::new();
 
@@ -122,14 +120,13 @@ pub fn group(plan: &Plan) -> Vec<SourceBlock> {
     blocks
 }
 
-/// Max width of complete source and output lines. If exceeded, outputs are
-/// printed one-per-line.
+/// Past this width the grid is abandoned and outputs print one per line.
 const MAX_WIDTH: usize = 120;
 const GUTTER: usize = 6;
 
-/// At or below this many outputs, stack the outputs.
-/// Each source block already occupies 3 lines with its name and probe data,
-/// better to fill these rows with outputs if we only have a few.
+/// A target with this few outputs stacks them instead of gridding them. A
+/// source block already fills three lines with its name and probe data, so a
+/// short list reads better printed down beside it.
 const STACK_BELOW: usize = 4;
 
 pub fn print_plan(blocks: &[SourceBlock], out_dir: &Path, targets: usize, outputs: usize) {
@@ -279,7 +276,7 @@ fn column_widths(target: &TargetOutputs, used: &[usize]) -> Vec<usize> {
         .collect()
 }
 
-/// Prine the grid's rows as text, widths down and codecs across, with subtitles
+/// The grid's rows as text, widths down and codecs across, with subtitles
 /// last. A codec no width uses is dropped rather than printed as blanks.
 /// `stacked` gives up the grid and prints one output per line.
 fn target_lines(target: &TargetOutputs, stacked: bool) -> Vec<String> {

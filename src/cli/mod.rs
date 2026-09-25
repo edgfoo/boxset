@@ -137,7 +137,7 @@ pub fn build(
 
     let settings = RunSettings {
         out_dir: match &fields.out_dir {
-            Some(flag) => boxset::config::against(&dir, flag),
+            Some(flag) => boxset::config::resolve_against(&dir, flag),
             None => config.out_dir.clone(),
         },
         jobs: fields.jobs.or(config.jobs).unwrap_or(DEFAULT_JOBS),
@@ -191,7 +191,7 @@ fn run(
         probes.push(Arc::new(probe.clone()));
     }
 
-    let known: Vec<String> = resolved.iter().map(boxset::plan::identity).collect();
+    let known: Vec<String> = resolved.iter().map(boxset::plan::target_name).collect();
     let unmatched: Vec<&String> = selection
         .names
         .iter()
@@ -210,7 +210,7 @@ fn run(
         return Ok(());
     }
 
-    let blocks = plan::group(&plan);
+    let blocks = plan::group_by_source(&plan);
     let targets = plan
         .tasks
         .iter()
@@ -231,7 +231,7 @@ fn run(
     }
 
     let mut reporter = LiveReporter::new(&plan, settings.verbose);
-    boxset::ensure(&requirements, &mut reporter)?;
+    boxset::ensure_met(&requirements, &mut reporter)?;
 
     let source_hashes = hash_sources(&plan);
 
@@ -268,7 +268,8 @@ fn run(
     Ok(())
 }
 
-/// Every run is approved.  If not running in a TTY, just proceed.
+/// Whether to go ahead. Nothing to answer the prompt outside a terminal, so
+/// a non-interactive run proceeds rather than blocking forever.
 fn confirm(yes: bool) -> anyhow::Result<bool> {
     if yes {
         return Ok(true);

@@ -42,7 +42,6 @@ pub enum SourceState {
     Failed(ProbeErrorKind),
 }
 
-/// A hash of a source's bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceHash(pub String);
 
@@ -110,7 +109,6 @@ impl Sources {
         }
     }
 
-    /// Takes whatever results have arrived so far. Never blocks.
     pub fn absorb(&mut self) {
         while let Ok((path, state)) = self.result_rx.try_recv() {
             self.in_flight -= 1;
@@ -118,7 +116,6 @@ impl Sources {
         }
     }
 
-    /// Blocks until nothing is in flight.
     pub fn wait(&mut self) {
         while self.in_flight > 0 {
             match self.result_rx.recv() {
@@ -144,7 +141,6 @@ impl Sources {
     }
 }
 
-/// A read-only lookup of probe results by path.
 pub trait SourceLookup {
     fn get(&self, path: &Path) -> Option<&SourceState>;
 }

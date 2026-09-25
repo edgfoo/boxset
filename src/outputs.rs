@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use crate::config::Codec;
 
-/// The naming inputs an output path needs.
 pub struct Naming<'a> {
     pub out_dir: &'a Path,
     pub src: &'a Path,
@@ -12,14 +11,12 @@ pub struct Naming<'a> {
 }
 
 impl Naming<'_> {
-    /// Tidied, so the default out_dir of `.` doesn't leave `./` on the front
-    /// of every path boxset prints and records.
+    /// Tidied, so an out_dir of `.` doesn't leave a `./` on the front.
     fn join(&self, filename: String) -> PathBuf {
-        crate::config::tidy(&self.out_dir.join(filename))
+        crate::config::fold_dot_segments(&self.out_dir.join(filename))
     }
 
-    /// The target's `name`, or the source stem when it has none.
-    fn stem(&self) -> String {
+    fn name_or_source_stem(&self) -> String {
         match self.name {
             Some(name) => name.to_owned(),
             None => self
@@ -42,7 +39,7 @@ fn needs_codec_suffix(codecs: &[Codec], codec: Codec) -> bool {
 }
 
 pub fn rendition_path(naming: &Naming, codecs: &[Codec], width: u32, codec: Codec) -> PathBuf {
-    let stem = naming.stem();
+    let stem = naming.name_or_source_stem();
     let ext = match codec {
         Codec::Vp9 => "webm",
         _ => "mp4",
@@ -56,11 +53,14 @@ pub fn rendition_path(naming: &Naming, codecs: &[Codec], width: u32, codec: Code
 }
 
 pub fn poster_path(naming: &Naming, width: u32) -> PathBuf {
-    naming.join(format!("{}-{width}-poster.jpg", naming.stem()))
+    naming.join(format!(
+        "{}-{width}-poster.jpg",
+        naming.name_or_source_stem()
+    ))
 }
 
 pub fn subtitles_path(naming: &Naming) -> PathBuf {
-    naming.join(format!("{}.vtt", naming.stem()))
+    naming.join(format!("{}.vtt", naming.name_or_source_stem()))
 }
 
 pub fn codec_suffix(codec: Codec) -> &'static str {

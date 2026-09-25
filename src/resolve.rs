@@ -102,37 +102,37 @@ fn resolve_crop(crop: &config::Crop) -> Crop {
         config::Crop::Anchored { ratio, anchor } => (ratio.as_str(), *anchor),
     };
     Crop {
-        ratio: parse_ratio(ratio),
+        ratio: ratio_or_panic(ratio),
         anchor,
     }
 }
 
-fn parse_ratio(raw: &str) -> (u32, u32) {
-    ratio(raw).unwrap_or_else(|| panic!("validated: crop ratio is well-formed, got {raw:?}"))
+fn ratio_or_panic(raw: &str) -> (u32, u32) {
+    parse_ratio(raw).unwrap_or_else(|| panic!("validated: crop ratio is well-formed, got {raw:?}"))
 }
 
 /// `W:H`, both sides non-zero.
-pub fn ratio(raw: &str) -> Option<(u32, u32)> {
+pub fn parse_ratio(raw: &str) -> Option<(u32, u32)> {
     let (w, h) = raw.split_once(':')?;
     let w: u32 = w.trim().parse().ok()?;
     let h: u32 = h.trim().parse().ok()?;
     (w > 0 && h > 0).then_some((w, h))
 }
 
-/// The largest rectangle of `crop`'s aspect ratio fitting the source.
 fn resolve_trim(trim: &config::TimeRange) -> TimeRange {
     TimeRange {
-        start_secs: trim.start.as_deref().map(parse_timestamp).unwrap_or(0.0),
-        end_secs: trim.end.as_deref().map(parse_timestamp),
+        start_secs: trim.start.as_deref().map(timestamp_or_panic).unwrap_or(0.0),
+        end_secs: trim.end.as_deref().map(timestamp_or_panic),
     }
 }
 
-fn parse_timestamp(raw: &str) -> f64 {
-    timestamp(raw).unwrap_or_else(|| panic!("validated: timestamp is well-formed, got {raw:?}"))
+fn timestamp_or_panic(raw: &str) -> f64 {
+    parse_timestamp(raw)
+        .unwrap_or_else(|| panic!("validated: timestamp is well-formed, got {raw:?}"))
 }
 
 /// `HH:MM:SS(.ms)`, `MM:SS(.ms)` or bare seconds.
-pub fn timestamp(raw: &str) -> Option<f64> {
+pub fn parse_timestamp(raw: &str) -> Option<f64> {
     let raw = raw.trim();
     let Some((rest, secs)) = raw.rsplit_once(':') else {
         return non_negative(raw.parse().ok()?);
@@ -181,7 +181,7 @@ fn resolve_poster(field: Option<&PosterField>) -> Option<PosterSettings> {
             at: settings
                 .at
                 .as_deref()
-                .map(|raw| Timestamp(parse_timestamp(raw))),
+                .map(|raw| Timestamp(timestamp_or_panic(raw))),
         }),
         Some(PosterField::Off(true)) | None => Some(PosterSettings { at: None }),
     }
@@ -294,24 +294,24 @@ mod tests {
 
     #[test]
     fn timestamp_parses_hms_and_bare_seconds() {
-        assert_eq!(parse_timestamp("00:00:04"), 4.0);
-        assert_eq!(parse_timestamp("00:01:04.5"), 64.5);
-        assert_eq!(parse_timestamp("4.5"), 4.5);
-        assert_eq!(parse_timestamp("01:04"), 64.0);
+        assert_eq!(timestamp_or_panic("00:00:04"), 4.0);
+        assert_eq!(timestamp_or_panic("00:01:04.5"), 64.5);
+        assert_eq!(timestamp_or_panic("4.5"), 4.5);
+        assert_eq!(timestamp_or_panic("01:04"), 64.0);
     }
 
     #[test]
     fn malformed_timestamps_are_rejected() {
         for raw in ["", "abc", "00:aa:04", "-4", "1:2:3:4"] {
-            assert_eq!(timestamp(raw), None, "{raw:?} should not parse");
+            assert_eq!(parse_timestamp(raw), None, "{raw:?} should not parse");
         }
     }
 
     #[test]
     fn malformed_ratios_are_rejected() {
         for raw in ["16x9", "16:", "16", "0:9", "16:0", "a:b"] {
-            assert_eq!(ratio(raw), None, "{raw:?} should not parse");
+            assert_eq!(parse_ratio(raw), None, "{raw:?} should not parse");
         }
-        assert_eq!(ratio("9:16"), Some((9, 16)));
+        assert_eq!(parse_ratio("9:16"), Some((9, 16)));
     }
 }

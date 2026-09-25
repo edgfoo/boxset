@@ -127,8 +127,11 @@ fn audio_args(audio: Option<&AudioSettings>, codec: Codec) -> Vec<String> {
     args
 }
 
-fn value<'a>(overrides: &'a CodecOverrides, expanded: &'a CodecOverrides) -> Resolved<'a> {
-    Resolved {
+fn settle_overrides<'a>(
+    overrides: &'a CodecOverrides,
+    expanded: &'a CodecOverrides,
+) -> SettledOverrides<'a> {
+    SettledOverrides {
         crf: overrides.crf.or(expanded.crf).unwrap_or(23),
         preset: overrides
             .preset
@@ -142,7 +145,7 @@ fn value<'a>(overrides: &'a CodecOverrides, expanded: &'a CodecOverrides) -> Res
     }
 }
 
-struct Resolved<'a> {
+struct SettledOverrides<'a> {
     crf: u32,
     preset: &'a str,
     profile: Option<&'a str>,
@@ -200,7 +203,7 @@ pub fn rendition_args(
     audio: Option<&AudioSettings>,
     probe: &Probe,
 ) -> RenditionArgs {
-    let v = value(overrides, expanded);
+    let v = settle_overrides(overrides, expanded);
     let filters = video_filters(width, crop, fps, probe);
     let keyint = keyframe_interval(fps, trim, probe);
     let src = src.to_string_lossy().to_string();

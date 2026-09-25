@@ -28,7 +28,6 @@ pub fn styled() -> bool {
         .get_or_init(|| std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal())
 }
 
-/// Whether output can be redrawn in place
 pub fn interactive() -> bool {
     static INTERACTIVE: OnceLock<bool> = OnceLock::new();
     *INTERACTIVE.get_or_init(|| {

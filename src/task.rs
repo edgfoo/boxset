@@ -25,8 +25,6 @@ pub struct Task {
     pub id: TaskId,
     pub probe: Arc<Probe>,
     pub output_path: PathBuf,
-    /// Whether the output already exists on disk, noted at plan time so a
-    /// build can name what it will replace before it starts.
     pub exists: bool,
     pub work: TaskWork,
 }

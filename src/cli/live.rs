@@ -1,9 +1,8 @@
-//! Live output build information, updated in-place as it runsa.
+//! Live build output, updated in place as it runs.
 //!
-//! Each target's rows are printed as a group. The whole group is printed
-//! when any of the output's begins building, and is redrawn as each output
-//! progresses. Without a terminal to redraw (in CI, etc), nothing is printed
-//! until a group is done.
+//! Each target's rows are printed as a group. A group appears once any of its
+//! outputs starts building, and is redrawn as each one progresses. Without a
+//! terminal to redraw in, nothing is printed until a group is done.
 
 use std::io::Write;
 use std::time::Duration;
@@ -221,8 +220,8 @@ impl LiveReporter {
         lines
     }
 
-    /// One explanation per distinct cause.
-    /// The same cause on two rows prints once.
+    /// One explanation per distinct cause: the same cause on two rows prints
+    /// once.
     fn error_lines(&self, group: &Group) -> Vec<String> {
         let mut lines = Vec::new();
         let mut seen: Vec<String> = Vec::new();
@@ -309,8 +308,8 @@ impl Reporter for LiveReporter {
     }
 }
 
-/// What the run made, broken down by kind: `12 videos, 6 posters, 6 VTTs`.
-fn made(plan: &Plan, produced: &[TaskId]) -> Vec<String> {
+/// `12 videos, 6 posters, 6 VTTs`, dropping any kind the run produced none of.
+fn counts_by_kind(plan: &Plan, produced: &[TaskId]) -> Vec<String> {
     let count = |matches: fn(TaskKind) -> bool| {
         plan.tasks
             .iter()
@@ -339,7 +338,7 @@ pub fn closing_lines(
 ) -> Vec<String> {
     let mut lines = Vec::new();
 
-    let made = made(plan, produced);
+    let made = counts_by_kind(plan, produced);
     if !made.is_empty() {
         lines.push(format!(
             "  {} created in {}.",

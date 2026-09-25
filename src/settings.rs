@@ -64,10 +64,10 @@ pub struct SubtitleSettings {
     pub model: WhisperModel,
 }
 
-/// Fixed rungs, filtered to the post-crop width and thinned top-down so each
-/// kept rung is at most half the width of the last one kept.
 const RUNG_WIDTHS: [u32; 5] = [480, 640, 960, 1280, 1920];
 
+/// The rungs that fit `post_crop_width`, thinned from the top so each kept
+/// rung is at most half the width of the one above it.
 pub fn derive_ladder(post_crop_width: u32) -> Vec<u32> {
     let candidates: Vec<u32> = RUNG_WIDTHS
         .into_iter()
@@ -89,9 +89,9 @@ pub fn derive_ladder(post_crop_width: u32) -> Vec<u32> {
     kept
 }
 
-/// Effort is fixed per codec, not varied by `quality`, which is compression
-/// alone. libvpx cpu-used above 3 disables rate-distortion optimisation, so
-/// those values encode worse at every CRF rather than merely faster.
+/// Fixed per codec: `quality` varies compression, not effort. libvpx cpu-used
+/// above 3 disables rate-distortion optimisation, so those values encode worse
+/// at every CRF rather than merely faster.
 fn effort(codec: Codec) -> &'static str {
     match codec {
         Codec::H264 | Codec::H265 => "veryslow",

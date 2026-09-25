@@ -173,8 +173,8 @@ fn available_encoders(ffmpeg: &Path) -> Option<HashSet<String>> {
     (!names.is_empty()).then_some(names)
 }
 
-/// The requirements that can't be acquired, only reported. Downloads nothing,
-/// so a dry run can call it.
+/// Fails on the requirements boxset can't acquire for itself. Downloads
+/// nothing, so a dry run can call it.
 pub fn ensure_available(requirements: &[Requirement]) -> Result<(), BoxsetError> {
     if let Some(Requirement::Tool(tool)) = requirements
         .iter()
@@ -209,7 +209,7 @@ pub fn ensure_available(requirements: &[Requirement]) -> Result<(), BoxsetError>
     Ok(())
 }
 
-pub fn ensure(
+pub fn ensure_met(
     requirements: &[Requirement],
     reporter: &mut dyn Reporter,
 ) -> Result<(), BoxsetError> {
@@ -579,7 +579,7 @@ mod tests {
             Requirement::Model(WhisperModel::Tiny),
             Requirement::Tool(Tool::Ffmpeg),
         ];
-        let err = ensure(&requirements, &mut Silent).unwrap_err();
+        let err = ensure_met(&requirements, &mut Silent).unwrap_err();
         assert!(matches!(
             err,
             BoxsetError::ToolMissing { tool: Tool::Ffmpeg }
@@ -590,7 +590,7 @@ mod tests {
     fn ensure_with_nothing_missing_is_ok() {
         struct Silent;
         impl Reporter for Silent {}
-        assert!(ensure(&[], &mut Silent).is_ok());
+        assert!(ensure_met(&[], &mut Silent).is_ok());
     }
 
     #[test]

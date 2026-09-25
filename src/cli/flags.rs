@@ -144,7 +144,6 @@ fn field_flags(fields: &FieldFlags) -> [(&'static str, bool); 29] {
     ]
 }
 
-/// The name of every field flag, whether given or not.
 #[cfg(test)]
 pub fn field_flag_names() -> impl Iterator<Item = &'static str> {
     field_flags(&FieldFlags::default())

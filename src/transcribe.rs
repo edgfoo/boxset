@@ -8,7 +8,6 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 use crate::config::WhisperModel;
 use crate::error::TranscribeError;
 
-/// One timed line of transcript.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cue {
     pub start_secs: f64,

@@ -28,7 +28,7 @@ impl Selection {
         if self.covers_all() {
             return true;
         }
-        self.names.contains(&identity(settings))
+        self.names.contains(&target_name(settings))
     }
 
     pub fn covers_config(&self, config: &crate::config::TargetConfig) -> bool {
@@ -46,9 +46,7 @@ impl Selection {
     }
 }
 
-/// A target's identity for `--target`: its `name`, or its source stem when it
-/// has none.
-pub fn identity(settings: &Settings) -> String {
+pub fn target_name(settings: &Settings) -> String {
     settings.name.clone().unwrap_or_else(|| {
         settings
             .src
