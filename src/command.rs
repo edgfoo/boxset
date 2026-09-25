@@ -287,10 +287,6 @@ pub fn rendition_args(
             if let Some(profile) = v.profile {
                 args.extend(["-profile:v".to_string(), profile.to_string()]);
             }
-            if codec == Codec::Av1 {
-                // Required for CRF mode on ffmpeg before 4.3, harmless after.
-                args.extend(["-b:v".to_string(), "0".to_string()]);
-            }
             if codec == Codec::H265 {
                 // Without it, Apple players reject h265 in mp4.
                 args.extend(["-tag:v".to_string(), "hvc1".to_string()]);
