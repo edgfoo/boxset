@@ -63,9 +63,12 @@ fn check_top_level_fields(top_level: &BTreeMap<String, toml::Value>, problems: &
         let kind = if TARGET_FIELDS.contains(&name.as_str()) {
             ProblemKind::TargetFieldAtTopLevel { name: name.clone() }
         } else {
+            // A misspelled target field lands here rather than in the branch
+            // above, so a suggestion has to consider both lists.
             ProblemKind::UnknownField {
                 name: name.clone(),
-                suggestion: closest_match(name, TOP_LEVEL_FIELDS),
+                suggestion: closest_match(name, TOP_LEVEL_FIELDS)
+                    .or_else(|| closest_match(name, TARGET_FIELDS)),
             }
         };
         problems.push(Problem {

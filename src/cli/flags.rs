@@ -4,13 +4,15 @@
 
 use std::path::PathBuf;
 
-use anyhow::bail;
 use clap::Args;
 
 use boxset::config::{
     Anchor, AudioField, Codec, CodecOverrides, Crop, Fps, PosterField, PosterSettings, Quality,
     SubtitleSettings, SubtitlesField, TargetConfig, TimeRange, WhisperModel,
 };
+use boxset::problem::Severity;
+
+use super::style::Note;
 
 #[derive(Args, Debug, Default, Clone)]
 pub struct FieldFlags {
@@ -162,7 +164,7 @@ impl FieldFlags {
 
     /// Flags to a `TargetConfig`, so a single-shot run and a config entry
     /// become the same shape.
-    pub fn to_target_config(&self, src: PathBuf) -> anyhow::Result<TargetConfig> {
+    pub fn to_target_config(&self, src: PathBuf) -> Result<TargetConfig, Note> {
         Ok(TargetConfig {
             src: Some(src),
             name: self.name.clone(),
@@ -216,7 +218,16 @@ impl FieldFlags {
     }
 }
 
-fn crop_field(flags: &FieldFlags) -> anyhow::Result<Option<Crop>> {
+fn unrecognised_value(given: &str, what: &str, expected: &str) -> Note {
+    Note {
+        severity: Severity::Error,
+        locator: None,
+        message: format!("`{given}` isn't {what}"),
+        detail: vec![format!("Expected {expected}.")],
+    }
+}
+
+fn crop_field(flags: &FieldFlags) -> Result<Option<Crop>, Note> {
     let Some(ratio) = flags.crop.clone() else {
         return Ok(None);
     };
@@ -242,7 +253,7 @@ fn poster_field(flags: &FieldFlags) -> Option<PosterField> {
     }
 }
 
-fn subtitles_field(flags: &FieldFlags) -> anyhow::Result<Option<SubtitlesField>> {
+fn subtitles_field(flags: &FieldFlags) -> Result<Option<SubtitlesField>, Note> {
     if flags.no_subs {
         return Ok(Some(SubtitlesField::Off(false)));
     }
@@ -289,55 +300,74 @@ fn split_args(raw: &str) -> Vec<String> {
     raw.split_whitespace().map(str::to_string).collect()
 }
 
-fn parse_quality(raw: &str) -> anyhow::Result<Quality> {
+fn parse_quality(raw: &str) -> Result<Quality, Note> {
     match raw {
         "low" => Ok(Quality::Low),
         "balanced" => Ok(Quality::Balanced),
         "high" => Ok(Quality::High),
         "max" => Ok(Quality::Max),
-        other => bail!("unknown quality {other:?}: expected low, balanced, high or max"),
+        other => Err(unrecognised_value(
+            other,
+            "a quality",
+            "low, balanced, high or max",
+        )),
     }
 }
 
-fn parse_codec(raw: &str) -> anyhow::Result<Codec> {
+fn parse_codec(raw: &str) -> Result<Codec, Note> {
     match raw {
         "h264" => Ok(Codec::H264),
         "h265" => Ok(Codec::H265),
         "vp9" => Ok(Codec::Vp9),
         "av1" => Ok(Codec::Av1),
-        other => bail!("unknown codec {other:?}: expected h264, h265, vp9 or av1"),
+        other => Err(unrecognised_value(
+            other,
+            "a codec",
+            "h264, h265, vp9 or av1",
+        )),
     }
 }
 
-fn parse_model(raw: &str) -> anyhow::Result<WhisperModel> {
+fn parse_model(raw: &str) -> Result<WhisperModel, Note> {
     match raw {
         "tiny" => Ok(WhisperModel::Tiny),
         "base" => Ok(WhisperModel::Base),
         "small" => Ok(WhisperModel::Small),
         "medium" => Ok(WhisperModel::Medium),
         "large" => Ok(WhisperModel::Large),
-        other => bail!("unknown model {other:?}: expected tiny, base, small, medium or large"),
+        other => Err(unrecognised_value(
+            other,
+            "a subtitle model",
+            "tiny, base, small, medium or large",
+        )),
     }
 }
 
-fn parse_anchor(raw: &str) -> anyhow::Result<Anchor> {
+fn parse_anchor(raw: &str) -> Result<Anchor, Note> {
     match raw {
         "centre" => Ok(Anchor::Centre),
         "top" => Ok(Anchor::Top),
         "bottom" => Ok(Anchor::Bottom),
         "left" => Ok(Anchor::Left),
         "right" => Ok(Anchor::Right),
-        other => {
-            bail!("unknown crop anchor {other:?}: expected centre, top, bottom, left or right")
-        }
+        other => Err(unrecognised_value(
+            other,
+            "a crop anchor",
+            "centre, top, bottom, left or right",
+        )),
     }
 }
 
 /// `START-END`, either side omittable: `-30` trims only the tail, `5-` only
 /// the head.
-fn parse_trim(raw: &str) -> anyhow::Result<TimeRange> {
+fn parse_trim(raw: &str) -> Result<TimeRange, Note> {
     let Some((start, end)) = raw.split_once('-') else {
-        bail!("trim {raw:?} should look like START-END, e.g. 0:05-0:30");
+        return Err(Note {
+            severity: Severity::Error,
+            locator: None,
+            message: format!("`{raw}` isn't a trim range"),
+            detail: vec!["Expected START-END, like 0:05-0:30.".to_string()],
+        });
     };
     let field = |s: &str| (!s.trim().is_empty()).then(|| s.trim().to_string());
     Ok(TimeRange {
@@ -348,14 +378,22 @@ fn parse_trim(raw: &str) -> anyhow::Result<TimeRange> {
 
 /// A decimal like `23.976` becomes an exact rational; ffmpeg is given the
 /// ratio rather than a rounded float.
-fn parse_fps(raw: &str) -> anyhow::Result<Fps> {
+fn parse_fps(raw: &str) -> Result<Fps, Note> {
+    let unrecognised = || {
+        unrecognised_value(
+            raw,
+            "a frame rate",
+            "a number like 25, 23.976 or 30000/1001",
+        )
+    };
+
     if let Some((num, den)) = raw.split_once('/') {
         return Ok(Fps {
-            num: num.trim().parse()?,
-            den: den.trim().parse()?,
+            num: num.trim().parse().map_err(|_| unrecognised())?,
+            den: den.trim().parse().map_err(|_| unrecognised())?,
         });
     }
-    let value: f64 = raw.trim().parse()?;
+    let value: f64 = raw.trim().parse().map_err(|_| unrecognised())?;
     // 23.976 and 29.97 are 24000/1001 and 30000/1001; recover the exact form.
     let rounded = (value * 1001.0 / 1000.0).round();
     if ((rounded * 1000.0 / 1001.0) - value).abs() < 0.001 && value.fract() != 0.0 {

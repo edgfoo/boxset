@@ -14,8 +14,8 @@ use boxset::plan::Plan;
 use boxset::report::{Reporter, TaskOutcome, TaskReport};
 use boxset::task::{TaskId, TaskKind};
 
-use super::errors::explain;
-use super::style::{bold, bold_green, dim, gray, icon, interactive, red};
+use super::errors::task_note;
+use super::style::{bold, bold_green, dim, gray, icon, interactive, note_lines, red};
 use super::units::{directory, elapsed, filename, plural, size};
 
 const CURSOR_UP: &str = "\x1b[A";
@@ -234,22 +234,21 @@ impl LiveReporter {
                 continue;
             };
 
-            let (headline, detail) = explain(error);
-            if seen.contains(&headline) {
+            let note = task_note(error);
+            if seen.contains(&note.message) {
                 continue;
             }
-            seen.push(headline.clone());
+            seen.push(note.message.clone());
 
             lines.push(String::new());
-            lines.push(format!("  {} {headline}", red("Error:")));
-
-            for line in detail {
-                lines.push(format!("    {}", dim(&line)));
-            }
+            lines.extend(note_lines(&note));
 
             if self.verbose
                 && let BoxsetError::EncodeFailed { source, .. } = error
             {
+                lines.push(String::new());
+                lines.push(format!("    {}", dim("ffmpeg said")));
+                lines.push(String::new());
                 for line in source.stderr.lines() {
                     lines.push(format!("    {}", dim(line)));
                 }
@@ -349,7 +348,9 @@ pub fn closing_lines(
     }
 
     if failed > 0 {
-        lines.push(String::new());
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
         lines.push(format!(
             "  {} {} {} failed.",
             red("✗"),

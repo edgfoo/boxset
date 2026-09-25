@@ -8,7 +8,9 @@ use boxset::plan::Plan;
 use boxset::sources::Probe;
 use boxset::task::TaskKind;
 
-use super::style::{bold, bold_dim, dim, dim_gray, icon, pad, section, visible_len, yellow};
+use super::style::{
+    Note, bold, bold_dim, dim, dim_gray, icon, pad, print_notes, section, visible_len, yellow,
+};
 use super::units::{directory, duration, filename, plural, size};
 
 const OVERWRITE_MARK: &str = "ˣ";
@@ -129,8 +131,19 @@ const GUTTER: usize = 6;
 /// short list reads better printed down beside it.
 const STACK_BELOW: usize = 4;
 
-pub fn print_plan(blocks: &[SourceBlock], out_dir: &Path, targets: usize, outputs: usize) {
+pub fn print_plan(
+    blocks: &[SourceBlock],
+    out_dir: &Path,
+    targets: usize,
+    outputs: usize,
+    notes: &[Note],
+) {
     section("Plan");
+
+    if !notes.is_empty() {
+        print_notes(notes);
+        println!();
+    }
 
     println!(
         "  {} {} for {} {} will be written to {}",

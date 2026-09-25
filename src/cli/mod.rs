@@ -9,6 +9,7 @@ mod plan;
 mod style;
 mod units;
 
+pub use errors::fail_parse;
 pub use flags::FieldFlags;
 pub use help::{print_build_help, print_help, print_summary};
 
@@ -17,13 +18,11 @@ use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, bail};
-
 use boxset::config::{Config, TargetConfig};
 use boxset::error::Tool;
 use boxset::plan::Selection;
-use boxset::problem::{ProblemKind, Severity};
-use boxset::sources::{ProbeErrorKind, SourceState, Sources};
+use boxset::problem::Severity;
+use boxset::sources::{SourceState, Sources};
 
 use live::LiveReporter;
 
@@ -79,11 +78,17 @@ struct RunSettings {
     /// Where the lockfile lives: beside the config, or the cwd for a
     /// single-shot run that has none.
     lock_dir: PathBuf,
+    /// Named as the locator when a problem belongs to the config file rather
+    /// than to one target.
+    config_path: Option<PathBuf>,
 }
 
 /// `boxset video.mp4`: one positional source, described entirely by flags
 pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()> {
-    let config = fields.to_target_config(source.to_path_buf())?;
+    let config = match fields.to_target_config(source.to_path_buf()) {
+        Ok(config) => config,
+        Err(note) => errors::fail_with_note(note),
+    };
     let settings = RunSettings {
         out_dir: fields
             .out_dir
@@ -94,6 +99,7 @@ pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()>
         verbose: fields.verbose,
         yes: fields.yes,
         lock_dir: PathBuf::from("."),
+        config_path: None,
     };
     run(
         vec![config],
@@ -112,10 +118,15 @@ pub fn build(
     fields: &FieldFlags,
 ) -> anyhow::Result<()> {
     if let Some(flag) = fields.first_field_flag() {
-        bail!(
-            "{flag} can't be used with `build`\n  Target settings come from boxset.toml.\n  For a \
-             one-off, use `boxset <video> {flag} ...`"
-        );
+        errors::fail_with_note(style::Note {
+            severity: Severity::Error,
+            locator: None,
+            message: format!("{flag} can't be used with `build`"),
+            detail: vec![
+                "Target settings come from boxset.toml.".to_string(),
+                format!("Try: boxset <video> {flag} ...   for a one-off"),
+            ],
+        });
     }
 
     let given = config_path.unwrap_or(Path::new(boxset::config::CONFIG_FILE));
@@ -123,12 +134,15 @@ pub fn build(
         true => given.join(boxset::config::CONFIG_FILE),
         false => given.to_path_buf(),
     };
-    let text = std::fs::read_to_string(&path).with_context(|| match config_path {
-        Some(_) => format!("no config at {}", path.display()),
-        None => "no boxset.toml in this directory".to_string(),
-    })?;
-    let mut config: Config =
-        toml::from_str(&text).with_context(|| format!("{} is not valid TOML", path.display()))?;
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(_) => errors::fail_with_note(missing_config_note(config_path, &path)),
+    };
+    let config: Result<Config, _> = toml::from_str(&text);
+    let mut config = match config {
+        Ok(config) => config,
+        Err(e) => errors::fail_with_note(errors::toml_note(&path, &text, &e)),
+    };
 
     // Everything downstream sees paths already resolved, so no later stage
     // needs to know where the config came from.
@@ -145,6 +159,7 @@ pub fn build(
         verbose: fields.verbose,
         yes: fields.yes,
         lock_dir: dir,
+        config_path: Some(path.clone()),
     };
     let selection = Selection {
         names: targets.to_vec(),
@@ -156,6 +171,19 @@ pub fn build(
         &selection,
         &settings,
     )
+}
+
+fn missing_config_note(given: Option<&Path>, path: &Path) -> style::Note {
+    let message = match given {
+        Some(_) => format!("There's no config at {}", path.display()),
+        None => "There's no boxset.toml in this directory.".to_string(),
+    };
+    style::Note {
+        severity: Severity::Error,
+        locator: None,
+        message,
+        detail: vec!["Try: boxset <video>   to prepare one video without a config".to_string()],
+    }
 }
 
 /// The shared pipeline both entry paths run.
@@ -173,11 +201,19 @@ fn run(
     sources.wait();
 
     let problems = boxset::validate(&configs, defaults, top_level, &settings.out_dir, &sources);
-    for problem in &problems {
-        println!("{}", describe_problem(problem));
-    }
+    let srcs: Vec<Option<PathBuf>> = configs.iter().map(|c| c.src.clone()).collect();
+    let notes: Vec<style::Note> = problems
+        .iter()
+        .map(|problem| errors::problem_note(problem, &srcs, settings.config_path.as_deref()))
+        .collect();
+
     if problems.iter().any(|p| p.severity == Severity::Error) {
-        bail!("stopped: nothing was encoded");
+        println!();
+        style::print_notes(&notes);
+        println!();
+        println!("  {}", style::dim("Nothing was encoded."));
+        println!();
+        std::process::exit(1);
     }
 
     let mut resolved = Vec::new();
@@ -198,10 +234,18 @@ fn run(
         .filter(|name| !known.contains(name))
         .collect();
     if let Some(name) = unmatched.first() {
-        bail!(
-            "no target called `{name}`\n  boxset.toml defines: {}",
-            known.join(", ")
-        );
+        errors::fail_with_note(style::Note {
+            severity: Severity::Error,
+            locator: None,
+            message: format!("boxset.toml has no target called `{name}`"),
+            detail: match known.first() {
+                Some(first) => vec![
+                    format!("It defines: {}", known.join(", ")),
+                    format!("Try: boxset build --target {first}"),
+                ],
+                None => vec!["It defines no targets.".to_string()],
+            },
+        });
     }
 
     let plan = boxset::plan(&resolved, &probes, selection);
@@ -217,12 +261,20 @@ fn run(
         .map(|t| t.id.target)
         .collect::<std::collections::BTreeSet<_>>()
         .len();
-    plan::print_plan(&blocks, &settings.out_dir, targets, plan.tasks.len());
+    plan::print_plan(
+        &blocks,
+        &settings.out_dir,
+        targets,
+        plan.tasks.len(),
+        &notes,
+    );
 
     let requirements = boxset::check_environment(&plan);
 
     if settings.dry_run {
-        boxset::ensure_available(&requirements)?;
+        if let Err(e) = boxset::ensure_available(&requirements) {
+            errors::fail_with_note(errors::task_note(&e));
+        }
         return Ok(());
     }
 
@@ -231,7 +283,9 @@ fn run(
     }
 
     let mut reporter = LiveReporter::new(&plan, settings.verbose);
-    boxset::ensure_met(&requirements, &mut reporter)?;
+    if let Err(e) = boxset::ensure_met(&requirements, &mut reporter) {
+        errors::fail_with_note(errors::task_note(&e));
+    }
 
     let source_hashes = hash_sources(&plan);
 
@@ -358,79 +412,12 @@ fn write_lockfile(
     // The outputs are already written, so a lockfile that won't write is
     // worth reporting but not worth failing the build over.
     if let Err(e) = lockfile.write(dir) {
-        println!("warning: couldn't write {}: {e}", boxset::lock::LOCK_FILE);
-    }
-}
-
-/// Where the backend's matchable values become sentences.
-fn describe_problem(problem: &boxset::Problem) -> String {
-    let mark = match problem.severity {
-        Severity::Error => "error",
-        Severity::Warning => "warning",
-    };
-    let target = match problem.target {
-        Some(index) => format!("target {}: ", index + 1),
-        None => String::new(),
-    };
-    format!("{mark}: {target}{}", problem_message(&problem.kind))
-}
-
-fn problem_message(kind: &ProblemKind) -> String {
-    match kind {
-        ProblemKind::SrcMissing => "no source file given\n  Every target needs a src.".to_string(),
-        ProblemKind::SrcUnprobeable { path, reason } => {
-            let detail = match reason {
-                ProbeErrorKind::NotFound => "There's no file at that path.",
-                ProbeErrorKind::Unreadable => "boxset couldn't run ffprobe to inspect it.",
-                ProbeErrorKind::Unparseable => {
-                    "ffprobe couldn't make sense of it, so it may be \
-                     corrupt or not a video at all."
-                }
-            };
-            format!("can't read {}\n  {detail}", path.display())
-        }
-        ProblemKind::OutputCollision { other, path } => format!(
-            "two targets write the same file\n  {} is also written by target {}.\n  Give one of \
-             them a distinct name.",
-            path.display(),
-            other + 1
-        ),
-        ProblemKind::CodecOverrideForExcludedCodec => {
-            "settings for a codec this target doesn't use\n  Add the codec to codecs, or drop its \
-             settings."
-                .to_string()
-        }
-        ProblemKind::OutDirNotWritable { path } => format!(
-            "boxset can't write to {}\n  Check the directory's permissions.",
-            path.display()
-        ),
-        ProblemKind::AudioSettingOnSilentSource => {
-            "audio settings on a video with no audio track\n  They'll be ignored.".to_string()
-        }
-        ProblemKind::UnknownField { name, suggestion } => match suggestion {
-            Some(guess) => format!("unknown setting `{name}`\n  Did you mean `{guess}`?"),
-            None => format!("unknown setting `{name}`"),
-        },
-        ProblemKind::MalformedValue { value, expected } => {
-            format!("`{value}` isn't valid here\n  Expected {expected}.")
-        }
-        ProblemKind::TargetFieldAtTopLevel { name } => format!(
-            "`{name}` is a target setting, but it's at the top level\n  Move it under a \
-             [[target]] table, or under [defaults] to set it for every target."
-        ),
-        ProblemKind::FieldNotAllowedInDefaults { name } => {
-            format!("`{name}` can't go in [defaults]\n  Set it on each [[target]] instead.")
-        }
-        ProblemKind::WidthsExceedSource { widths, available } => {
-            let list = widths
-                .iter()
-                .map(|w| w.to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!(
-                "the source is only {available}px wide, {list} would be upscaled\n  Upscaling \
-                 makes bigger files without adding detail."
-            )
-        }
+        println!();
+        style::print_notes(&[style::Note {
+            severity: Severity::Warning,
+            locator: None,
+            message: format!("couldn't write {}: {e}", boxset::lock::LOCK_FILE),
+            detail: vec!["Your outputs are fine; boxset will re-encode them next run.".to_string()],
+        }]);
     }
 }

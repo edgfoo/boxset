@@ -71,7 +71,10 @@ fn main() -> anyhow::Result<()> {
         _ => {}
     }
 
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => cli::fail_parse(&e),
+    };
 
     if cli.help {
         match cli.command {

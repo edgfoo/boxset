@@ -1,12 +1,15 @@
 use std::io::IsTerminal;
 use std::sync::OnceLock;
 
+use boxset::problem::Severity;
 use boxset::task::TaskKind;
 
 const VIDEO: &str = "⏵";
 const POSTER: &str = "⚀";
 const SUBTITLES: &str = "┅";
 const SECTION: &str = "◆";
+const WARNING: &str = "▲";
+const ERROR: &str = "█";
 
 const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
@@ -92,6 +95,52 @@ pub fn section(name: &str) {
     println!();
     println!("{} {}", dim(SECTION), bold(name));
     println!();
+}
+
+pub struct Note {
+    pub severity: Severity,
+    /// A file, a flag, a target, etc
+    pub locator: Option<String>,
+    pub message: String,
+    pub detail: Vec<String>,
+}
+
+pub fn note_lines(note: &Note) -> Vec<String> {
+    let glyph = match note.severity {
+        Severity::Error => red(ERROR),
+        Severity::Warning => yellow(WARNING),
+    };
+    let head = match &note.locator {
+        Some(locator) => format!("{glyph} {}  {}", dim(locator), note.message),
+        None => format!("{glyph} {}", note.message),
+    };
+
+    let mut lines = vec![format!("  {head}")];
+    for line in &note.detail {
+        lines.push(format!("    {}", dim(line)));
+    }
+    lines
+}
+
+pub fn print_notes(notes: &[Note]) {
+    let spaced = notes.iter().any(|note| !note.detail.is_empty());
+    let ordered = notes
+        .iter()
+        .filter(|note| note.severity == Severity::Error)
+        .chain(
+            notes
+                .iter()
+                .filter(|note| note.severity == Severity::Warning),
+        );
+
+    for (index, note) in ordered.enumerate() {
+        if spaced && index > 0 {
+            println!();
+        }
+        for line in note_lines(note) {
+            println!("{line}");
+        }
+    }
 }
 
 /// Pads to a visible width, ignoring the escapes the text may carry.
