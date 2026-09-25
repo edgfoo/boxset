@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use crate::config::{Codec, CodecOverrides};
-use crate::settings::{AudioSettings, Crop, Fps, TimeRange, Timestamp};
+use crate::config::Codec;
+use crate::settings::{AudioSettings, CodecOptions, Crop, Fps, TimeRange, Timestamp};
 use crate::sources::Probe;
 
 pub const MIN_FFMPEG_VERSION: (u32, u32) = (7, 0);
@@ -127,33 +127,6 @@ fn audio_args(audio: Option<&AudioSettings>, codec: Codec) -> Vec<String> {
     args
 }
 
-fn settle_overrides<'a>(
-    overrides: &'a CodecOverrides,
-    expanded: &'a CodecOverrides,
-) -> SettledOverrides<'a> {
-    SettledOverrides {
-        crf: overrides.crf.or(expanded.crf).unwrap_or(23),
-        preset: overrides
-            .preset
-            .as_deref()
-            .or(expanded.preset.as_deref())
-            .unwrap_or("slow"),
-        profile: overrides.profile.as_deref(),
-        cpu_used: overrides.cpu_used.or(expanded.cpu_used).unwrap_or(2),
-        row_mt: overrides.row_mt.or(expanded.row_mt).unwrap_or(true),
-        extra_args: overrides.extra_args.as_deref().unwrap_or(&[]),
-    }
-}
-
-struct SettledOverrides<'a> {
-    crf: u32,
-    preset: &'a str,
-    profile: Option<&'a str>,
-    cpu_used: u32,
-    row_mt: bool,
-    extra_args: &'a [String],
-}
-
 pub struct RenditionArgs {
     /// One entry per stage; vp9 has two.
     pub stages: Vec<Vec<String>>,
@@ -195,15 +168,15 @@ pub fn rendition_args(
     tmp: &Path,
     codec: Codec,
     width: u32,
-    overrides: &CodecOverrides,
-    expanded: &CodecOverrides,
+    options: &CodecOptions,
     trim: Option<TimeRange>,
     crop: Option<Crop>,
     fps: Option<Fps>,
     audio: Option<&AudioSettings>,
     probe: &Probe,
 ) -> RenditionArgs {
-    let v = settle_overrides(overrides, expanded);
+    let crf = options.crf.expect("resolved: quality expansion sets crf");
+    let extra_args = &options.extra_args;
     let filters = video_filters(width, crop, fps, probe);
     let keyint = keyframe_interval(fps, trim, probe);
     let src = src.to_string_lossy().to_string();
@@ -220,6 +193,8 @@ pub fn rendition_args(
 
     match codec {
         Codec::Vp9 => {
+            let cpu_used = options.cpu_used.unwrap_or(2);
+            let row_mt = options.row_mt.unwrap_or(true);
             let passlog = format!("{tmp_str}.passlog");
             let common = |args: &mut Vec<String>| {
                 args.extend([
@@ -228,11 +203,11 @@ pub fn rendition_args(
                     "-b:v".to_string(),
                     "0".to_string(),
                     "-crf".to_string(),
-                    v.crf.to_string(),
+                    crf.to_string(),
                     "-deadline".to_string(),
                     "good".to_string(),
                     "-row-mt".to_string(),
-                    if v.row_mt { "1" } else { "0" }.to_string(),
+                    if row_mt { "1" } else { "0" }.to_string(),
                     "-passlogfile".to_string(),
                     passlog.clone(),
                 ]);
@@ -254,21 +229,21 @@ pub fn rendition_args(
                 "null".to_string(),
                 "-".to_string(),
             ]);
-            one.extend(v.extra_args.iter().cloned());
+            one.extend(extra_args.iter().cloned());
 
             let mut two = Vec::new();
             head(&mut two);
             common(&mut two);
             two.extend([
                 "-cpu-used".to_string(),
-                v.cpu_used.to_string(),
+                cpu_used.to_string(),
                 "-pix_fmt".to_string(),
                 "yuv420p".to_string(),
                 "-pass".to_string(),
                 "2".to_string(),
             ]);
             two.extend(audio_args(audio, codec));
-            two.extend(v.extra_args.iter().cloned());
+            two.extend(extra_args.iter().cloned());
             two.push(tmp_str.clone());
 
             RenditionArgs {
@@ -277,14 +252,15 @@ pub fn rendition_args(
             }
         }
         _ => {
+            let preset = options.preset.as_deref().unwrap_or("slow");
             let mut args = Vec::new();
             head(&mut args);
 
             args.extend(["-c:v".to_string(), video_encoder(codec).to_string()]);
-            args.extend(["-crf".to_string(), v.crf.to_string()]);
-            args.extend(["-preset".to_string(), v.preset.to_string()]);
+            args.extend(["-crf".to_string(), crf.to_string()]);
+            args.extend(["-preset".to_string(), preset.to_string()]);
 
-            if let Some(profile) = v.profile {
+            if let Some(profile) = options.profile.as_deref() {
                 args.extend(["-profile:v".to_string(), profile.to_string()]);
             }
             if codec == Codec::H265 {
@@ -298,7 +274,7 @@ pub fn rendition_args(
             args.extend(["-pix_fmt".to_string(), "yuv420p".to_string()]);
             args.extend(audio_args(audio, codec));
             args.extend(["-movflags".to_string(), "+faststart".to_string()]);
-            args.extend(v.extra_args.iter().cloned());
+            args.extend(extra_args.iter().cloned());
             args.push(tmp_str);
 
             RenditionArgs {

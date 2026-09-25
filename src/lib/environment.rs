@@ -519,8 +519,7 @@ mod tests {
             work: TaskWork::Rendition {
                 codec,
                 width: 640,
-                quality: crate::config::Quality::Balanced,
-                overrides: Default::default(),
+                options: Default::default(),
                 trim: None,
                 crop: None,
                 fps: None,

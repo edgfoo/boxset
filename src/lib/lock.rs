@@ -112,8 +112,7 @@ fn describe_work(work: &TaskWork) -> String {
         TaskWork::Rendition {
             codec,
             width,
-            quality,
-            overrides,
+            options,
             trim,
             crop,
             fps,
@@ -129,15 +128,15 @@ fn describe_work(work: &TaskWork) -> String {
                 .map(|a| format!("{}:{}", a.bitrate, a.normalize))
                 .unwrap_or_else(|| "none".to_string());
             format!(
-                "rendition codec={codec:?} width={width} quality={quality:?} \
+                "rendition codec={codec:?} width={width} \
                  crf={:?} preset={:?} profile={:?} cpu_used={:?} row_mt={:?} \
                  extra={:?} trim={trim} crop={crop} fps={fps} audio={audio}",
-                overrides.crf,
-                overrides.preset,
-                overrides.profile,
-                overrides.cpu_used,
-                overrides.row_mt,
-                overrides.extra_args,
+                options.crf,
+                options.preset,
+                options.profile,
+                options.cpu_used,
+                options.row_mt,
+                options.extra_args,
             )
         }
         TaskWork::Poster { width, at, crop } => {
@@ -193,15 +192,14 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Codec, CodecOverrides, Quality};
-    use crate::settings::{Crop, Timestamp};
+    use crate::config::Codec;
+    use crate::settings::{CodecOptions, Crop, Timestamp};
 
     fn rendition(width: u32) -> TaskWork {
         TaskWork::Rendition {
             codec: Codec::H264,
             width,
-            quality: Quality::Balanced,
-            overrides: CodecOverrides {
+            options: CodecOptions {
                 crf: Some(23),
                 ..Default::default()
             },
@@ -228,8 +226,8 @@ mod tests {
         assert_ne!(args_hash(&rendition(480)), args_hash(&rendition(960)));
 
         let mut crf_20 = rendition(480);
-        if let TaskWork::Rendition { overrides, .. } = &mut crf_20 {
-            overrides.crf = Some(20);
+        if let TaskWork::Rendition { options, .. } = &mut crf_20 {
+            options.crf = Some(20);
         }
         assert_ne!(args_hash(&rendition(480)), args_hash(&crf_20));
     }

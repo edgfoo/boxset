@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::config::{Codec, CodecOverrides, Quality, WhisperModel};
-use crate::settings::{AudioSettings, Crop, Fps, TimeRange, Timestamp};
+use crate::config::{Codec, WhisperModel};
+use crate::settings::{AudioSettings, CodecOptions, Crop, Fps, TimeRange, Timestamp};
 use crate::sources::Probe;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,8 +34,7 @@ pub enum TaskWork {
     Rendition {
         codec: Codec,
         width: u32,
-        quality: Quality,
-        overrides: CodecOverrides,
+        options: CodecOptions,
         trim: Option<TimeRange>,
         crop: Option<Crop>,
         fps: Option<Fps>,

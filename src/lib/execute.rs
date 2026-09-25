@@ -16,7 +16,6 @@ use crate::environment::resolve_tool_path;
 use crate::error::{BoxsetError, FfmpegError, Tool, TranscribeError, classify_ffmpeg_failure};
 use crate::plan::Plan;
 use crate::report::{Phase, Reporter, TaskOutcome, TaskReport};
-use crate::settings::expand_quality;
 use crate::task::{Task, TaskId, TaskWork};
 use crate::transcribe;
 
@@ -274,21 +273,18 @@ fn run_ffmpeg_task(task: &Task, tx: &mpsc::Sender<Event>) -> Result<(), BoxsetEr
         TaskWork::Rendition {
             codec,
             width,
-            quality,
-            overrides,
+            options,
             trim,
             crop,
             fps,
             audio,
         } => {
-            let expanded = expand_quality(*quality, *codec);
             let built = command::rendition_args(
                 src,
                 &tmp,
                 *codec,
                 *width,
-                overrides,
-                &expanded,
+                options,
                 *trim,
                 *crop,
                 *fps,

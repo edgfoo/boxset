@@ -5,8 +5,8 @@ use crate::config::{
     TargetConfig, WhisperModel,
 };
 use crate::settings::{
-    AudioSettings, Crop, Fps, PosterSettings, Settings, SubtitleSettings, TimeRange, Timestamp,
-    derive_ladder, expand_quality,
+    AudioSettings, CodecOptions, Crop, Fps, PosterSettings, Settings, SubtitleSettings, TimeRange,
+    Timestamp, derive_ladder, expand_quality,
 };
 use crate::sources::Probe;
 
@@ -38,10 +38,10 @@ pub fn resolve(config: &TargetConfig, probe: &Probe, out_dir: &std::path::Path) 
         name: config.name.clone(),
         out_dir: out_dir.to_path_buf(),
         quality,
-        h264: resolve_overrides(quality, Codec::H264, config.h264.as_ref(), &codecs),
-        h265: resolve_overrides(quality, Codec::H265, config.h265.as_ref(), &codecs),
-        vp9: resolve_overrides(quality, Codec::Vp9, config.vp9.as_ref(), &codecs),
-        av1: resolve_overrides(quality, Codec::Av1, config.av1.as_ref(), &codecs),
+        h264: resolve_codec_options(quality, Codec::H264, config.h264.as_ref(), &codecs),
+        h265: resolve_codec_options(quality, Codec::H265, config.h265.as_ref(), &codecs),
+        vp9: resolve_codec_options(quality, Codec::Vp9, config.vp9.as_ref(), &codecs),
+        av1: resolve_codec_options(quality, Codec::Av1, config.av1.as_ref(), &codecs),
         codecs,
         crop,
         widths,
@@ -56,44 +56,31 @@ pub fn resolve(config: &TargetConfig, probe: &Probe, out_dir: &std::path::Path) 
     }
 }
 
-fn resolve_overrides(
+fn resolve_codec_options(
     quality: Quality,
     codec: Codec,
     specified: Option<&CodecOverrides>,
     codecs: &[Codec],
-) -> CodecOverrides {
+) -> CodecOptions {
     if !codecs.contains(&codec) {
-        return CodecOverrides::default();
+        return CodecOptions::default();
     }
 
-    let mut overrides = expand_quality(quality, codec);
-    if let Some(specified) = specified {
-        overlay_overrides(&mut overrides, specified);
-    }
-    overrides
-}
+    let mut options = expand_quality(quality, codec);
+    let Some(specified) = specified else {
+        return options;
+    };
 
-/// Specified fields win field by field over the quality expansion; anything
-/// not named on the override keeps the expanded value.
-fn overlay_overrides(base: &mut CodecOverrides, specified: &CodecOverrides) {
-    if specified.crf.is_some() {
-        base.crf = specified.crf;
+    // Field by field: anything the user didn't name keeps its expanded value.
+    options.crf = specified.crf.or(options.crf);
+    options.preset = specified.preset.clone().or(options.preset);
+    options.profile = specified.profile.clone().or(options.profile);
+    options.cpu_used = specified.cpu_used.or(options.cpu_used);
+    options.row_mt = specified.row_mt.or(options.row_mt);
+    if let Some(extra_args) = &specified.extra_args {
+        options.extra_args = extra_args.clone();
     }
-    if specified.preset.is_some() {
-        base.preset = specified.preset.clone();
-    }
-    if specified.profile.is_some() {
-        base.profile = specified.profile.clone();
-    }
-    if specified.cpu_used.is_some() {
-        base.cpu_used = specified.cpu_used;
-    }
-    if specified.row_mt.is_some() {
-        base.row_mt = specified.row_mt;
-    }
-    if specified.extra_args.is_some() {
-        base.extra_args = specified.extra_args.clone();
-    }
+    options
 }
 
 fn resolve_crop(crop: &config::Crop) -> Crop {

@@ -18,10 +18,22 @@ pub struct Settings {
     pub audio: Option<AudioSettings>,
     pub poster: Option<PosterSettings>,
     pub subtitles: Option<SubtitleSettings>,
-    pub h264: CodecOverrides,
-    pub h265: CodecOverrides,
-    pub vp9: CodecOverrides,
-    pub av1: CodecOverrides,
+    pub h264: CodecOptions,
+    pub h265: CodecOptions,
+    pub vp9: CodecOptions,
+    pub av1: CodecOptions,
+}
+
+/// The resolved ffmpeg options for each codec. A combination of
+/// the quality flag and any codec overrides.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CodecOptions {
+    pub crf: Option<u32>,
+    pub preset: Option<String>,
+    pub profile: Option<String>,
+    pub cpu_used: Option<u32>,
+    pub row_mt: Option<bool>,
+    pub extra_args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,7 +113,7 @@ fn effort(codec: Codec) -> &'static str {
     }
 }
 
-pub fn expand_quality(quality: Quality, codec: Codec) -> CodecOverrides {
+pub fn expand_quality(quality: Quality, codec: Codec) -> CodecOptions {
     use Codec::*;
     use Quality::*;
 
@@ -130,13 +142,13 @@ pub fn expand_quality(quality: Quality, codec: Codec) -> CodecOverrides {
     let effort = effort(codec);
 
     match codec {
-        Vp9 => CodecOverrides {
+        Vp9 => CodecOptions {
             crf: Some(crf),
             cpu_used: effort.parse().ok(),
             row_mt: Some(true),
             ..Default::default()
         },
-        _ => CodecOverrides {
+        _ => CodecOptions {
             crf: Some(crf),
             preset: Some(effort.to_string()),
             ..Default::default()

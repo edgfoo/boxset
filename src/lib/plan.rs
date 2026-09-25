@@ -107,8 +107,7 @@ fn plan_target(target: usize, settings: &Settings, probe: &Arc<Probe>) -> Vec<Ta
                 TaskWork::Rendition {
                     codec,
                     width,
-                    quality: settings.quality,
-                    overrides: codec_overrides(settings, codec),
+                    options: codec_options(settings, codec),
                     trim: settings.trim,
                     crop: settings.crop,
                     fps: settings.fps,
@@ -184,7 +183,7 @@ fn naming(settings: &Settings) -> Naming<'_> {
     }
 }
 
-fn codec_overrides(settings: &Settings, codec: Codec) -> crate::config::CodecOverrides {
+fn codec_options(settings: &Settings, codec: Codec) -> crate::settings::CodecOptions {
     match codec {
         Codec::H264 => settings.h264.clone(),
         Codec::H265 => settings.h265.clone(),
