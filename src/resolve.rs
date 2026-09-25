@@ -280,8 +280,10 @@ mod tests {
         });
         let settings = resolve(&cfg, &probe(1920, 1080, true), &out_dir());
         assert_eq!(settings.h264.crf, Some(20));
-        // preset keeps the quality-expansion value since it wasn't overridden.
-        assert_eq!(settings.h264.preset.as_deref(), Some("veryslow"));
+
+        let expanded = expand_quality(Quality::Balanced, Codec::H264);
+        assert_ne!(expanded.crf, Some(20), "the override must differ to prove");
+        assert_eq!(settings.h264.preset, expanded.preset);
     }
 
     #[test]

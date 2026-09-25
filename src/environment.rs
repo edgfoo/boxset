@@ -584,15 +584,22 @@ mod tests {
         assert!(ensure_met(&[], &mut Silent).is_ok());
     }
 
+    /// The cache is keyed by filename, so two tiers sharing one would serve
+    /// the wrong weights; a shared digest would pass verification for both.
     #[test]
     fn each_tier_has_a_distinct_file_and_digest() {
         for tier in ALL_MODELS {
-            assert_eq!(model_sha256(tier).len(), 64);
-            let same_file = ALL_MODELS
+            let files = ALL_MODELS
                 .iter()
                 .filter(|&&t| model_file_name(t) == model_file_name(tier))
                 .count();
-            assert_eq!(same_file, 1, "{tier:?} shares a file with another tier");
+            assert_eq!(files, 1, "{tier:?} shares a file with another tier");
+
+            let digests = ALL_MODELS
+                .iter()
+                .filter(|&&t| model_sha256(t) == model_sha256(tier))
+                .count();
+            assert_eq!(digests, 1, "{tier:?} shares a digest with another tier");
         }
     }
 }

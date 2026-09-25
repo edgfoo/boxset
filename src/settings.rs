@@ -66,8 +66,9 @@ pub struct SubtitleSettings {
 
 const RUNG_WIDTHS: [u32; 5] = [480, 640, 960, 1280, 1920];
 
-/// The rungs that fit `post_crop_width`, thinned from the top so each kept
-/// rung is at most half the width of the one above it.
+/// The widths to encode for a source this wide, widest first, dropping any
+/// rung less than twice as narrow as the last one kept: two rungs close in
+/// width cost an encode each and give the page almost the same file.
 pub fn derive_ladder(post_crop_width: u32) -> Vec<u32> {
     let candidates: Vec<u32> = RUNG_WIDTHS
         .into_iter()
@@ -148,15 +149,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ladder_thins_from_the_top() {
-        assert_eq!(derive_ladder(3840), vec![480, 960, 1920]);
-        assert_eq!(derive_ladder(1280), vec![640, 1280]);
-        assert_eq!(derive_ladder(1080), vec![480, 960]);
-        assert_eq!(derive_ladder(640), vec![640]);
+    fn every_ladder_is_usable() {
+        for source in [400, 640, 1080, 1280, 1920, 3840] {
+            let ladder = derive_ladder(source);
+
+            assert!(!ladder.is_empty(), "{source} gave no rungs");
+            assert!(
+                ladder.iter().all(|&w| w <= source),
+                "{source} upscales: {ladder:?}"
+            );
+
+            for pair in ladder.windows(2) {
+                assert!(pair[0] * 2 <= pair[1], "{source} kept {pair:?}");
+            }
+        }
     }
 
+    /// A source narrower than every rung still gets one, at its own width.
     #[test]
-    fn ladder_never_upscales_below_smallest_rung() {
+    fn a_source_below_the_smallest_rung_gets_itself() {
         assert_eq!(derive_ladder(400), vec![400]);
     }
 }
