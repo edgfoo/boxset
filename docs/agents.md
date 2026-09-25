@@ -74,7 +74,7 @@ pages.
 
 ## Architecture
 
-One pipeline, in `src/`:
+One pipeline, in `src/lib/`:
 
 ```
 Sources ──┐                                 selection
@@ -85,7 +85,7 @@ config  ──┴─→  validate  ──→  resolve  ──→  plan  ──�
 
 The library is the whole tool minus a way to talk to it, and can be built and
 tested with no interface at all. `src/cli/` is a client of it. The TUI, when it
-arrives, will be another — see [TODOS/TUI.md](TODOS/TUI.md).
+arrives, will be another — see [todos/tui.md](todos/tui.md).
 
 ### Principles that hold this together
 
