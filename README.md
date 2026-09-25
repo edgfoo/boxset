@@ -7,22 +7,24 @@ Prepares a video for presentation on the web: transcoding to multiple formats an
 
 ## How to use
 
-Point it at a video.
+Run boxset with the video you want to prepare.
 
 ```bash
 boxset interview.mp4
 ```
 
-That gives you, in `assets/video/`, your video at a few sizes in two formats, a poster frame for each size, and subtitles.
+This gives you multiple compressed transcodings at different sizes, a poster frame for each size, and subtitles.
 
 ```
-assets/video/
+export/
   interview-640.mp4     interview-640.webm     interview-640-poster.jpg
   interview-1280.mp4    interview-1280.webm    interview-1280-poster.jpg
   interview.vtt
 ```
 
-The sizes are chosen from the source: the largest matches the source video, and each one below is small enough to be worth offering separately. Subtitles are transcribed on your own machine with Whisper.
+The sizes are chosen from the source: the largest matches the source video, and one or two smaller versions for loading on smaller devices.
+
+Subtitles are transcribed on your own machine with Whisper.
 
 Boxset offers a wealth of command line options that control the output set, compression, and other default behaviour.
 
@@ -53,8 +55,8 @@ src = "raw/interview.mov"
 crop = "16:9"
 
 [[target]]
-name = "interview-mobile"
 src = "raw/interview.mov"
+name = "interview-mobile"
 crop = "9:16"
 crop_anchor = "top"
 ```

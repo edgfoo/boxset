@@ -99,10 +99,7 @@ fn a_build_records_an_entry_per_output_it_produced() {
     let lock = project.lockfile();
     assert_eq!(
         lock.outputs.keys().collect::<Vec<_>>(),
-        vec![
-            "assets/video/bear-320-poster.jpg",
-            "assets/video/bear-320.mp4"
-        ]
+        vec!["export/bear-320-poster.jpg", "export/bear-320.mp4"]
     );
 
     for entry in lock.outputs.values() {
@@ -125,8 +122,8 @@ fn outputs_share_a_source_hash_and_differ_by_args() {
     let source_hashes: Vec<&String> = lock.outputs.values().map(|e| &e.source_hash).collect();
     assert_eq!(source_hashes[0], source_hashes[1]);
 
-    let poster = &lock.outputs["assets/video/bear-320-poster.jpg"];
-    let rendition = &lock.outputs["assets/video/bear-320.mp4"];
+    let poster = &lock.outputs["export/bear-320-poster.jpg"];
+    let rendition = &lock.outputs["export/bear-320.mp4"];
     assert_ne!(poster.args_hash, rendition.args_hash);
     assert_ne!(poster.output_hash, rendition.output_hash);
 }
@@ -180,13 +177,13 @@ subtitles = false
         "the unbuilt target's entries should survive"
     );
     assert_eq!(
-        after.outputs["assets/video/bear-1280x720-640.mp4"],
-        before.outputs["assets/video/bear-1280x720-640.mp4"],
+        after.outputs["export/bear-1280x720-640.mp4"],
+        before.outputs["export/bear-1280x720-640.mp4"],
         "an untouched target's entry should be unchanged"
     );
     assert_ne!(
-        after.outputs["assets/video/bear-320.mp4"].args_hash,
-        before.outputs["assets/video/bear-320.mp4"].args_hash,
+        after.outputs["export/bear-320.mp4"].args_hash,
+        before.outputs["export/bear-320.mp4"].args_hash,
         "the rebuilt target's args hash should follow the crf change"
     );
 }
@@ -209,12 +206,11 @@ fn a_failed_task_gets_no_entry_and_the_rest_still_record() {
 
     let lock = project.lockfile();
     assert!(
-        !lock.outputs.contains_key("assets/video/bear-320.mp4"),
+        !lock.outputs.contains_key("export/bear-320.mp4"),
         "a failed task should leave no entry"
     );
     assert!(
-        lock.outputs
-            .contains_key("assets/video/bear-320-poster.jpg"),
+        lock.outputs.contains_key("export/bear-320-poster.jpg"),
         "the task beside it should still record"
     );
     assert_eq!(lock.outputs.len(), 1);
@@ -258,13 +254,13 @@ fn a_two_pass_encode_records_a_command_per_pass() {
     project.run(&["bear.mp4", "--no-subs", "--codecs", "vp9"]);
 
     let lock = project.lockfile();
-    let rendition = &lock.outputs["assets/video/bear-320.webm"].commands;
+    let rendition = &lock.outputs["export/bear-320.webm"].commands;
     assert_eq!(rendition.len(), 2, "{rendition:?}");
     assert!(rendition[0].contains("-pass 1"), "{rendition:?}");
     assert!(rendition[1].contains("-pass 2"), "{rendition:?}");
     assert!(rendition[1].contains("libvpx-vp9"), "{rendition:?}");
 
-    let poster = &lock.outputs["assets/video/bear-320-poster.jpg"].commands;
+    let poster = &lock.outputs["export/bear-320-poster.jpg"].commands;
     assert_eq!(poster.len(), 1, "{poster:?}");
 }
 
@@ -282,7 +278,7 @@ fn an_argument_containing_spaces_is_quoted() {
     ]);
 
     let lock = project.lockfile();
-    let commands = &lock.outputs["assets/video/bear-320.mp4"].commands;
+    let commands = &lock.outputs["export/bear-320.mp4"].commands;
     assert!(
         commands[0].contains("\"keyint=48\"") || commands[0].contains("-x264-params"),
         "{commands:?}"
@@ -320,7 +316,7 @@ poster = false
     let lock: Lockfile = toml::from_str(&text).unwrap();
     assert_eq!(
         lock.outputs.keys().collect::<Vec<_>>(),
-        vec!["videos/assets/video/bear-320.mp4"]
+        vec!["videos/export/bear-320.mp4"]
     );
-    assert!(videos.join("assets/video/bear-320.mp4").exists());
+    assert!(videos.join("export/bear-320.mp4").exists());
 }

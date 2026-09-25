@@ -88,7 +88,7 @@ pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()>
         out_dir: fields
             .out_dir
             .clone()
-            .unwrap_or_else(|| PathBuf::from("assets/video")),
+            .unwrap_or_else(|| PathBuf::from("export")),
         jobs: fields.jobs.unwrap_or(DEFAULT_JOBS),
         dry_run: fields.dry_run,
         verbose: fields.verbose,

@@ -9,7 +9,7 @@ use boxset::sources::Probe;
 use boxset::task::TaskKind;
 
 use super::style::{bold, bold_dim, dim, dim_gray, icon, pad, section, visible_len, yellow};
-use super::units::{duration, filename, size};
+use super::units::{directory, duration, filename, size};
 
 const OVERWRITE_MARK: &str = "ˣ";
 
@@ -141,7 +141,7 @@ pub fn print_plan(blocks: &[SourceBlock], out_dir: &Path, targets: usize, output
         plural(outputs, "output"),
         bold(&targets.to_string()),
         plural(targets, "target"),
-        bold(&out_dir.display().to_string())
+        bold(&directory(out_dir))
     );
 
     let lead = blocks

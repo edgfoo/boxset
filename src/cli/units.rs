@@ -9,6 +9,18 @@ pub fn filename(path: &Path) -> String {
         .unwrap_or_default()
 }
 
+/// An output directory as it goes into a sentence. A relative path takes a
+/// `./` so it reads as a directory rather than as a bare word.
+pub fn directory(path: &Path) -> String {
+    if path.as_os_str().is_empty() || path == Path::new(".") {
+        return "./".to_string();
+    }
+    match path.is_absolute() || path.starts_with(".") || path.starts_with("..") {
+        true => path.display().to_string(),
+        false => format!("./{}", path.display()),
+    }
+}
+
 /// `4.2s` below a minute, `1:04` above it
 pub fn elapsed(duration: Duration) -> String {
     let secs = duration.as_secs_f64();

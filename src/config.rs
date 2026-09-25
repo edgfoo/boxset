@@ -26,7 +26,7 @@ pub struct Config {
 }
 
 fn default_out_dir() -> PathBuf {
-    PathBuf::from("assets/video")
+    PathBuf::from("export")
 }
 
 /// Resolves `path` against `base`, leaving absolute paths alone.
@@ -40,7 +40,7 @@ pub fn against(base: &Path, path: &Path) -> PathBuf {
 /// Folds away `.` and `x/..` so joined paths read as someone would write them.
 /// Doesn't look at the filesystem, so a `..` that would step out of a symlinked
 /// directory is left alone.
-fn tidy(path: &Path) -> PathBuf {
+pub fn tidy(path: &Path) -> PathBuf {
     let mut out: Vec<Component> = Vec::new();
     for part in path.components() {
         match part {

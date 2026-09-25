@@ -12,6 +12,12 @@ pub struct Naming<'a> {
 }
 
 impl Naming<'_> {
+    /// Tidied, so the default out_dir of `.` doesn't leave `./` on the front
+    /// of every path boxset prints and records.
+    fn join(&self, filename: String) -> PathBuf {
+        crate::config::tidy(&self.out_dir.join(filename))
+    }
+
     /// The target's `name`, or the source stem when it has none.
     fn stem(&self) -> String {
         match self.name {
@@ -46,17 +52,15 @@ pub fn rendition_path(naming: &Naming, codecs: &[Codec], width: u32, codec: Code
     } else {
         format!("{stem}-{width}.{ext}")
     };
-    naming.out_dir.join(filename)
+    naming.join(filename)
 }
 
 pub fn poster_path(naming: &Naming, width: u32) -> PathBuf {
-    naming
-        .out_dir
-        .join(format!("{}-{width}-poster.jpg", naming.stem()))
+    naming.join(format!("{}-{width}-poster.jpg", naming.stem()))
 }
 
 pub fn subtitles_path(naming: &Naming) -> PathBuf {
-    naming.out_dir.join(format!("{}.vtt", naming.stem()))
+    naming.join(format!("{}.vtt", naming.stem()))
 }
 
 pub fn codec_suffix(codec: Codec) -> &'static str {
@@ -95,5 +99,21 @@ mod tests {
             rendition_path(&naming, &[Codec::H264, Codec::Vp9], 960, Codec::H264),
             PathBuf::from("assets/video/interview-960.mp4")
         );
+    }
+
+    /// `--out-dir .` shouldn't leave a `./` on every path recorded in the
+    /// lockfile and printed in the plan.
+    #[test]
+    fn the_current_directory_leaves_no_prefix_on_a_path() {
+        let naming = Naming {
+            out_dir: Path::new("."),
+            src: Path::new("interview.mp4"),
+            name: None,
+        };
+        assert_eq!(
+            rendition_path(&naming, &[Codec::H264], 960, Codec::H264),
+            PathBuf::from("interview-960.mp4")
+        );
+        assert_eq!(subtitles_path(&naming), PathBuf::from("interview.vtt"));
     }
 }

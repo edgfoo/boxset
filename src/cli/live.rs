@@ -17,7 +17,7 @@ use boxset::task::{TaskId, TaskKind};
 
 use super::errors::explain;
 use super::style::{bold, bold_green, dim, gray, icon, interactive, red};
-use super::units::{elapsed, filename, size};
+use super::units::{directory, elapsed, filename, size};
 
 const CURSOR_UP: &str = "\x1b[A";
 const CLEAR_LINE: &str = "\x1b[2K";
@@ -361,10 +361,7 @@ pub fn closing_lines(
 
     if !made.is_empty() {
         lines.push(String::new());
-        lines.push(format!(
-            "  Find them in {}.",
-            bold(&out_dir.display().to_string())
-        ));
+        lines.push(format!("  Find them in {}.", bold(&directory(out_dir))));
     }
 
     lines
