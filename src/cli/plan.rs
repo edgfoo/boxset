@@ -180,6 +180,7 @@ pub fn print_plan(blocks: &[SourceBlock], out_dir: &Path, targets: usize, output
             bold_dim("overwritten"),
             yellow(OVERWRITE_MARK),
         );
+        println!();
     }
 }
 

@@ -278,7 +278,6 @@ fn confirm(yes: bool) -> anyhow::Result<bool> {
         return Ok(true);
     }
 
-    println!();
     print!("  {} [y/n] ", style::bold("Proceed?"));
     std::io::stdout().flush()?;
 
