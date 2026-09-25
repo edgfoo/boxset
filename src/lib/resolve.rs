@@ -17,7 +17,7 @@ pub fn resolve(config: &TargetConfig, probe: &Probe, out_dir: &std::path::Path) 
     let codecs = config
         .codecs
         .clone()
-        .unwrap_or_else(|| vec![Codec::H264, Codec::Vp9]);
+        .unwrap_or_else(|| config::DEFAULT_CODECS.to_vec());
     let crop = config.crop.as_ref().map(resolve_crop);
     let trim = config.trim.as_ref().map(resolve_trim);
 
@@ -84,18 +84,32 @@ fn resolve_codec_options(
 }
 
 fn resolve_crop(crop: &config::Crop) -> Crop {
-    let (ratio, anchor) = match crop {
-        config::Crop::Bare(ratio) => (ratio.as_str(), Anchor::Centre),
-        config::Crop::Anchored { ratio, anchor } => (ratio.as_str(), *anchor),
-    };
-    Crop {
-        ratio: ratio_or_panic(ratio),
-        anchor,
-    }
+    try_resolve_crop(crop).unwrap_or_else(|| {
+        panic!(
+            "validated: crop ratio is well-formed, got {:?}",
+            raw_ratio(crop)
+        )
+    })
 }
 
-fn ratio_or_panic(raw: &str) -> (u32, u32) {
-    parse_ratio(raw).unwrap_or_else(|| panic!("validated: crop ratio is well-formed, got {raw:?}"))
+/// `None` for a malformed ratio. `validate` needs this form: it derives a
+/// ladder for a config whose ratio it hasn't checked yet.
+pub fn try_resolve_crop(crop: &config::Crop) -> Option<Crop> {
+    let anchor = match crop {
+        config::Crop::Bare(_) => Anchor::Centre,
+        config::Crop::Anchored { anchor, .. } => *anchor,
+    };
+    Some(Crop {
+        ratio: parse_ratio(raw_ratio(crop))?,
+        anchor,
+    })
+}
+
+fn raw_ratio(crop: &config::Crop) -> &str {
+    match crop {
+        config::Crop::Bare(ratio) => ratio,
+        config::Crop::Anchored { ratio, .. } => ratio,
+    }
 }
 
 /// `W:H`, both sides non-zero.

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use crate::config::{
-    Anchor, AudioField, Codec, Crop, PosterField, SubtitlesField, TOP_LEVEL_FIELDS, TargetConfig,
+    AudioField, Codec, Crop, PosterField, SubtitlesField, TOP_LEVEL_FIELDS, TargetConfig,
 };
 use crate::outputs::{self, Naming};
 use crate::problem::{Problem, ProblemKind, Severity};
@@ -145,7 +145,7 @@ fn check_codec_overrides(index: usize, config: &TargetConfig, problems: &mut Vec
     let codecs = config
         .codecs
         .clone()
-        .unwrap_or_else(|| vec![Codec::H264, Codec::Vp9]);
+        .unwrap_or_else(|| crate::config::DEFAULT_CODECS.to_vec());
 
     let overrides: [(Codec, bool, &'static str); 4] = [
         (Codec::H264, config.h264.is_some(), "h264"),
@@ -248,7 +248,10 @@ fn check_widths_against_source(
         return;
     };
 
-    let crop = config.crop.as_ref().and_then(try_resolve_crop);
+    let crop = config
+        .crop
+        .as_ref()
+        .and_then(crate::resolve::try_resolve_crop);
     let available = crate::command::cropped_size(crop, probe).0;
 
     let too_wide: Vec<u32> = widths.iter().copied().filter(|&w| w > available).collect();
@@ -291,7 +294,12 @@ fn output_paths(
         return None;
     };
 
-    let crop = config.crop.as_ref().and_then(try_resolve_crop);
+    // A malformed ratio gives no crop, so the ladder is derived from the
+    // uncropped width. The ratio is reported by check_malformed_values.
+    let crop = config
+        .crop
+        .as_ref()
+        .and_then(crate::resolve::try_resolve_crop);
     let post_crop_width = crate::command::cropped_size(crop, probe).0;
     let widths = config
         .widths
@@ -300,7 +308,7 @@ fn output_paths(
     let codecs = config
         .codecs
         .clone()
-        .unwrap_or_else(|| vec![Codec::H264, Codec::Vp9]);
+        .unwrap_or_else(|| crate::config::DEFAULT_CODECS.to_vec());
 
     let naming = Naming {
         out_dir,
@@ -315,19 +323,6 @@ fn output_paths(
         !matches!(config.poster, Some(PosterField::Off(false))),
         !matches!(config.subtitles, Some(SubtitlesField::Off(false))),
     ))
-}
-
-/// `None` for a malformed ratio, which is reported separately; here it just
-/// means the ladder can't be narrowed, so the uncropped width stands.
-fn try_resolve_crop(crop: &Crop) -> Option<crate::settings::Crop> {
-    let (raw, anchor) = match crop {
-        Crop::Bare(ratio) => (ratio.as_str(), Anchor::Centre),
-        Crop::Anchored { ratio, anchor } => (ratio.as_str(), *anchor),
-    };
-    Some(crate::settings::Crop {
-        ratio: crate::resolve::parse_ratio(raw)?,
-        anchor,
-    })
 }
 
 fn check_output_collisions(
@@ -415,6 +410,43 @@ mod tests {
             video_codec: "h264".to_string(),
             audio_codec: has_audio.then(|| "aac".to_string()),
             size_bytes: 1_000_000,
+        }
+    }
+
+    /// A default the two derivations disagree about would have the checker
+    /// reporting on files no run writes.
+    #[test]
+    fn the_paths_checked_for_collisions_are_the_paths_the_build_writes() {
+        let case = |label, adjust: &dyn Fn(&mut TargetConfig)| {
+            let mut cfg = config("video.mp4");
+            adjust(&mut cfg);
+            (label, cfg)
+        };
+
+        let cases = [
+            case("bare", &|_| {}),
+            case("named", &|c| c.name = Some("wide".to_string())),
+            case("cropped", &|c| {
+                c.crop = Some(Crop::Bare("9:16".to_string()))
+            }),
+            case("explicit codecs", &|c| {
+                c.codecs = Some(vec![Codec::H264, Codec::H265, Codec::Av1])
+            }),
+            case("no poster or subtitles", &|c| {
+                c.poster = Some(PosterField::Off(false));
+                c.subtitles = Some(SubtitlesField::Off(false));
+            }),
+        ];
+
+        let probe = probe(1920, 1080, true);
+        let sources = sources_with("video.mp4", probe.clone());
+
+        for (label, cfg) in cases {
+            let checked = output_paths(&cfg, out_dir(), &sources).expect("probed source");
+            let settings = crate::resolve::resolve(&cfg, &probe, out_dir());
+            let built = crate::plan::all_output_paths(&[settings]);
+
+            assert_eq!(checked, built, "{label}");
         }
     }
 
