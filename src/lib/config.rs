@@ -19,7 +19,7 @@ pub struct Config {
     #[serde(rename = "target", default)]
     pub targets: Vec<TargetConfig>,
 
-    /// Leftover top-level keys, for the "target field written at top level" check.
+    /// Leftover top-level keys, for the "target field written at top level" check
     #[serde(flatten)]
     pub unknown: BTreeMap<String, toml::Value>,
 }
@@ -35,8 +35,7 @@ pub fn resolve_against(base: &Path, path: &Path) -> PathBuf {
     }
 }
 
-/// Purely textual, so a `..` that would step out of a symlinked directory is
-/// left alone.
+/// Purely textual, so a `..` that would step out of a symlinked directory is left alone.
 pub fn fold_dot_segments(path: &Path) -> PathBuf {
     let mut out: Vec<Component> = Vec::new();
     for part in path.components() {
@@ -67,8 +66,7 @@ impl Config {
         }
     }
 
-    /// Every target with `[defaults]` filled in. The rest of the pipeline
-    /// runs on these, not on `targets`.
+    /// Every target with `[defaults]` filled in
     pub fn merged_targets(&self) -> Vec<TargetConfig> {
         self.targets
             .iter()
@@ -77,11 +75,9 @@ impl Config {
     }
 }
 
-/// Keys that belong at the top level, for suggesting a spelling.
 pub const TOP_LEVEL_FIELDS: &[&str] = &["out_dir", "jobs", "target", "defaults"];
 
-/// One `[[target]]` entry, or the flags of a single-shot run. Every field is
-/// optional: what the user actually specified, nothing derived.
+/// One `[[target]]` entry, or the flags of a single-shot run
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct TargetConfig {
     pub src: Option<PathBuf>,
@@ -100,14 +96,14 @@ pub struct TargetConfig {
     pub vp9: Option<CodecOverrides>,
     pub av1: Option<CodecOverrides>,
 
-    /// Leftover keys on a target: unknown fields, and the top-level-key-on-a-target check.
+    /// Leftover keys on a target: unknown fields, and the top-level-key-on-a-target check
     #[serde(flatten)]
     pub unknown: BTreeMap<String, toml::Value>,
 }
 
 impl TargetConfig {
-    /// Anything this target sets wins; anything it leaves out comes from
-    /// `defaults`. Lists replace rather than concatenate.
+    /// Fill missing config values with `defaults`.
+    /// Lists are replaced, not combined.
     pub fn with_defaults(&self, defaults: &TargetConfig) -> TargetConfig {
         TargetConfig {
             src: self.src.clone(),
@@ -118,13 +114,13 @@ impl TargetConfig {
             widths: or_clone(&self.widths, &defaults.widths),
             trim: or_clone(&self.trim, &defaults.trim),
             fps: self.fps.or(defaults.fps),
-            audio: merge_audio(&self.audio, &defaults.audio),
-            poster: merge_poster(&self.poster, &defaults.poster),
-            subtitles: merge_subtitles(&self.subtitles, &defaults.subtitles),
-            h264: merge_overrides(&self.h264, &defaults.h264),
-            h265: merge_overrides(&self.h265, &defaults.h265),
-            vp9: merge_overrides(&self.vp9, &defaults.vp9),
-            av1: merge_overrides(&self.av1, &defaults.av1),
+            audio: merge_toggle(&self.audio, &defaults.audio),
+            poster: merge_toggle(&self.poster, &defaults.poster),
+            subtitles: merge_toggle(&self.subtitles, &defaults.subtitles),
+            h264: merge(&self.h264, &defaults.h264),
+            h265: merge(&self.h265, &defaults.h265),
+            vp9: merge(&self.vp9, &defaults.vp9),
+            av1: merge(&self.av1, &defaults.av1),
             unknown: self.unknown.clone(),
         }
     }
@@ -134,67 +130,69 @@ fn or_clone<T: Clone>(target: &Option<T>, defaults: &Option<T>) -> Option<T> {
     target.clone().or_else(|| defaults.clone())
 }
 
-/// Two tables merge field by field. A `false` on either side switches the
-/// feature off or on outright, so it never merges with a table.
-fn merge_audio(target: &Option<AudioField>, defaults: &Option<AudioField>) -> Option<AudioField> {
+trait Mergeable: Clone {
+    fn merge(&self, defaults: &Self) -> Self;
+}
+
+fn merge<T: Mergeable>(target: &Option<T>, defaults: &Option<T>) -> Option<T> {
     match (target, defaults) {
-        (Some(AudioField::Settings(target)), Some(AudioField::Settings(defaults))) => {
-            Some(AudioField::Settings(AudioSettings {
-                normalize: target.normalize.or(defaults.normalize),
-                bitrate: or_clone(&target.bitrate, &defaults.bitrate),
-            }))
+        (Some(target), Some(defaults)) => Some(target.merge(defaults)),
+        _ => or_clone(target, defaults),
+    }
+}
+
+/// Two tables merge. A `false` on either side switches the feature off or on
+/// outright, so it never merges with a table.
+fn merge_toggle<T: Mergeable>(
+    target: &Option<Toggle<T>>,
+    defaults: &Option<Toggle<T>>,
+) -> Option<Toggle<T>> {
+    match (target, defaults) {
+        (Some(Toggle::Settings(target)), Some(Toggle::Settings(defaults))) => {
+            Some(Toggle::Settings(target.merge(defaults)))
         }
         (Some(field), _) => Some(field.clone()),
         (None, defaults) => defaults.clone(),
     }
 }
 
-fn merge_poster(
-    target: &Option<PosterField>,
-    defaults: &Option<PosterField>,
-) -> Option<PosterField> {
-    match (target, defaults) {
-        (Some(PosterField::Settings(target)), Some(PosterField::Settings(defaults))) => {
-            Some(PosterField::Settings(PosterSettings {
-                at: or_clone(&target.at, &defaults.at),
-            }))
+impl Mergeable for AudioSettings {
+    fn merge(&self, defaults: &Self) -> Self {
+        AudioSettings {
+            normalize: self.normalize.or(defaults.normalize),
+            bitrate: or_clone(&self.bitrate, &defaults.bitrate),
         }
-        (Some(field), _) => Some(field.clone()),
-        (None, defaults) => defaults.clone(),
     }
 }
 
-fn merge_subtitles(
-    target: &Option<SubtitlesField>,
-    defaults: &Option<SubtitlesField>,
-) -> Option<SubtitlesField> {
-    match (target, defaults) {
-        (Some(SubtitlesField::Settings(target)), Some(SubtitlesField::Settings(defaults))) => {
-            Some(SubtitlesField::Settings(SubtitleSettings {
-                language: or_clone(&target.language, &defaults.language),
-                model: target.model.or(defaults.model),
-            }))
+impl Mergeable for PosterSettings {
+    fn merge(&self, defaults: &Self) -> Self {
+        PosterSettings {
+            at: or_clone(&self.at, &defaults.at),
         }
-        (Some(field), _) => Some(field.clone()),
-        (None, defaults) => defaults.clone(),
     }
 }
 
-fn merge_overrides(
-    target: &Option<CodecOverrides>,
-    defaults: &Option<CodecOverrides>,
-) -> Option<CodecOverrides> {
-    let (Some(target), Some(defaults)) = (target, defaults) else {
-        return or_clone(target, defaults);
-    };
-    Some(CodecOverrides {
-        crf: target.crf.or(defaults.crf),
-        preset: or_clone(&target.preset, &defaults.preset),
-        profile: or_clone(&target.profile, &defaults.profile),
-        cpu_used: target.cpu_used.or(defaults.cpu_used),
-        row_mt: target.row_mt.or(defaults.row_mt),
-        extra_args: or_clone(&target.extra_args, &defaults.extra_args),
-    })
+impl Mergeable for SubtitleSettings {
+    fn merge(&self, defaults: &Self) -> Self {
+        SubtitleSettings {
+            language: or_clone(&self.language, &defaults.language),
+            model: self.model.or(defaults.model),
+        }
+    }
+}
+
+impl Mergeable for CodecOverrides {
+    fn merge(&self, defaults: &Self) -> Self {
+        CodecOverrides {
+            crf: self.crf.or(defaults.crf),
+            preset: or_clone(&self.preset, &defaults.preset),
+            profile: or_clone(&self.profile, &defaults.profile),
+            cpu_used: self.cpu_used.or(defaults.cpu_used),
+            row_mt: self.row_mt.or(defaults.row_mt),
+            extra_args: or_clone(&self.extra_args, &defaults.extra_args),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -267,10 +265,14 @@ pub struct Fps {
 /// `false` to switch off, or a table to configure.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
-pub enum AudioField {
+pub enum Toggle<T> {
     Off(bool),
-    Settings(AudioSettings),
+    Settings(T),
 }
+
+pub type AudioField = Toggle<AudioSettings>;
+pub type PosterField = Toggle<PosterSettings>;
+pub type SubtitlesField = Toggle<SubtitleSettings>;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AudioSettings {
@@ -278,23 +280,9 @@ pub struct AudioSettings {
     pub bitrate: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum PosterField {
-    Off(bool),
-    Settings(PosterSettings),
-}
-
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct PosterSettings {
     pub at: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum SubtitlesField {
-    Off(bool),
-    Settings(SubtitleSettings),
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
