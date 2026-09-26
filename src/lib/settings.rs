@@ -74,6 +74,8 @@ pub struct PosterSettings {
 pub struct SubtitleSettings {
     pub language: Option<String>,
     pub model: WhisperModel,
+    /// `None` is whisper's own sentence-level segmentation.
+    pub max_cue_chars: Option<u32>,
 }
 
 const RUNG_WIDTHS: [u32; 5] = [480, 640, 960, 1280, 1920];

@@ -155,9 +155,10 @@ fn run_task(task: &Task, tx: &mpsc::Sender<Event>) -> Result<(), BoxsetError> {
         TaskWork::Subtitles {
             language,
             model,
+            max_cue_chars,
             trim,
             ..
-        } => run_subtitles_task(task, language.as_deref(), *model, *trim, tx),
+        } => run_subtitles_task(task, language.as_deref(), *model, *max_cue_chars, *trim, tx),
         _ => run_ffmpeg_task(task, tx),
     }
 }
@@ -168,6 +169,7 @@ fn run_subtitles_task(
     task: &Task,
     language: Option<&str>,
     model: WhisperModel,
+    max_cue_chars: Option<u32>,
     trim: Option<crate::settings::TimeRange>,
     tx: &mpsc::Sender<Event>,
 ) -> Result<(), BoxsetError> {
@@ -204,7 +206,7 @@ fn run_subtitles_task(
     }
 
     let _ = tx.send(Event::Stage(task.id, stages[1], 2, stages.len() as u32));
-    let result = transcribe_extracted(task, &audio, model, language, tx);
+    let result = transcribe_extracted(task, &audio, model, language, max_cue_chars, tx);
     let _ = std::fs::remove_file(&audio);
     let cues = result.map_err(fail)?;
 
@@ -229,6 +231,7 @@ fn transcribe_extracted(
     audio: &Path,
     model: WhisperModel,
     language: Option<&str>,
+    max_cue_chars: Option<u32>,
     tx: &mpsc::Sender<Event>,
 ) -> Result<Vec<transcribe::Cue>, TranscribeError> {
     let pcm = std::fs::read(audio).map_err(|e| {
@@ -248,6 +251,7 @@ fn transcribe_extracted(
         &crate::environment::model_path(model),
         &transcribe::pcm_s16le_to_f32(&pcm),
         language,
+        max_cue_chars,
         move |done| {
             counter.store((done * 100.0) as usize, Ordering::Relaxed);
         },

@@ -1,8 +1,8 @@
 //! `resolve()`: config plus probe in, total `Settings` out.
 
 use crate::config::{
-    self, Anchor, AudioField, Codec, CodecOverrides, PosterField, Quality, SubtitlesField,
-    TargetConfig, WhisperModel,
+    self, Anchor, AudioField, Codec, CodecOverrides, CueLength, PosterField, Quality,
+    SubtitlesField, TargetConfig, WhisperModel,
 };
 use crate::settings::{
     AudioSettings, CodecOptions, Crop, Fps, PosterSettings, Settings, SubtitleSettings, TimeRange,
@@ -188,6 +188,8 @@ fn resolve_poster(field: Option<&PosterField>) -> Option<PosterSettings> {
     }
 }
 
+const DEFAULT_CUE_LENGTH: CueLength = CueLength::Short;
+
 /// `None` means `subtitles = false`.
 fn resolve_subtitles(field: Option<&SubtitlesField>) -> Option<SubtitleSettings> {
     match field {
@@ -195,10 +197,15 @@ fn resolve_subtitles(field: Option<&SubtitlesField>) -> Option<SubtitleSettings>
         Some(SubtitlesField::Settings(settings)) => Some(SubtitleSettings {
             language: settings.language.clone(),
             model: settings.model.unwrap_or(WhisperModel::Base),
+            max_cue_chars: settings
+                .cue_length
+                .unwrap_or(DEFAULT_CUE_LENGTH)
+                .max_chars(),
         }),
         Some(SubtitlesField::Off(true)) | None => Some(SubtitleSettings {
             language: None,
             model: WhisperModel::Base,
+            max_cue_chars: DEFAULT_CUE_LENGTH.max_chars(),
         }),
     }
 }

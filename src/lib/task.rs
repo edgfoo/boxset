@@ -48,6 +48,8 @@ pub enum TaskWork {
     Subtitles {
         language: Option<String>,
         model: WhisperModel,
+        /// `None` is whisper's own sentence-level segmentation.
+        max_cue_chars: Option<u32>,
         /// Transcription covers the trimmed window, so cue timings line up
         /// with the renditions rather than the source.
         trim: Option<TimeRange>,

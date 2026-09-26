@@ -178,6 +178,7 @@ impl Mergeable for SubtitleSettings {
         SubtitleSettings {
             language: or_clone(&self.language, &defaults.language),
             model: self.model.or(defaults.model),
+            cue_length: self.cue_length.or(defaults.cue_length),
         }
     }
 }
@@ -292,6 +293,58 @@ pub struct PosterSettings {
 pub struct SubtitleSettings {
     pub language: Option<String>,
     pub model: Option<WhisperModel>,
+    pub cue_length: Option<CueLength>,
+}
+
+/// A target length for individual cues in the transcription.
+/// Either a preset (short, medium, long) or an exact number of targe tcharacters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CueLength {
+    Short,
+    Medium,
+    Long,
+    Chars(u32),
+}
+
+impl CueLength {
+    pub fn max_chars(self) -> Option<u32> {
+        match self {
+            CueLength::Short => Some(42),
+            CueLength::Medium => Some(84),
+            CueLength::Long => None,
+            CueLength::Chars(chars) => Some(chars),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CueLength {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::{Error, Unexpected};
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Name(String),
+            Chars(i64),
+        }
+
+        match Raw::deserialize(deserializer)? {
+            Raw::Name(name) => match name.as_str() {
+                "short" => Ok(CueLength::Short),
+                "medium" => Ok(CueLength::Medium),
+                "long" => Ok(CueLength::Long),
+                other => Err(D::Error::invalid_value(
+                    Unexpected::Str(other),
+                    &"\"short\", \"medium\", \"long\", or a character count",
+                )),
+            },
+            Raw::Chars(chars) if chars > 0 => Ok(CueLength::Chars(chars as u32)),
+            Raw::Chars(chars) => Err(D::Error::invalid_value(
+                Unexpected::Signed(chars),
+                &"a character count above zero",
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

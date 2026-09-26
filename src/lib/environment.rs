@@ -466,6 +466,7 @@ mod tests {
             work: TaskWork::Subtitles {
                 language: None,
                 model,
+                max_cue_chars: None,
                 trim: None,
                 extra_args: Vec::new(),
             },

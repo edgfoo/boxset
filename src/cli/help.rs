@@ -120,6 +120,12 @@ const SINGLE_SHOT: &[Group] = &[
                 "base",
                 "whispr model: base, small, medium, large",
             ),
+            flag(
+                "--subs-cue-len",
+                "<length>",
+                "short",
+                "cue length: short, medium, long",
+            ),
             flag("--no-subs", "", "", ""),
         ],
     },
