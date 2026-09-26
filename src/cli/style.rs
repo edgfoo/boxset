@@ -21,6 +21,7 @@ const CYAN: &str = "\x1b[36m";
 const BOLD_GREEN: &str = "\x1b[1;32m";
 const GRAY: &str = "\x1b[90m";
 const DIM_GRAY: &str = "\x1b[2;90m";
+const DIM_CYAN: &str = "\x1b[2;36m";
 const BOLD_DIM: &str = "\x1b[1;2m";
 const RESET: &str = "\x1b[0m";
 
@@ -179,4 +180,10 @@ pub fn icon(kind: TaskKind) -> String {
         TaskKind::Poster { .. } => blue(POSTER),
         TaskKind::Subtitles => cyan(SUBTITLES),
     }
+}
+
+/// The subtitle icon, dimmed: the model fetch is work towards the subtitles
+/// rather than an output of its own.
+pub fn dim_subtitles_icon() -> String {
+    wrap(DIM_CYAN, SUBTITLES)
 }

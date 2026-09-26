@@ -261,15 +261,16 @@ fn run(
         .map(|t| t.id.target)
         .collect::<std::collections::BTreeSet<_>>()
         .len();
+    let requirements = boxset::check_environment(&plan);
+
     plan::print_plan(
         &blocks,
         &settings.out_dir,
         targets,
         plan.tasks.len(),
         &notes,
+        &requirements,
     );
-
-    let requirements = boxset::check_environment(&plan);
 
     if settings.dry_run {
         if let Err(e) = boxset::ensure_available(&requirements) {
@@ -282,14 +283,15 @@ fn run(
         return Ok(());
     }
 
-    let mut reporter = LiveReporter::new(&plan, settings.verbose);
+    let mut reporter = LiveReporter::new(&plan, &requirements, settings.verbose);
+
+    style::section("Building");
     if let Err(e) = boxset::ensure_met(&requirements, &mut reporter) {
         errors::fail_with_note(errors::task_note(&e));
     }
 
     let source_hashes = hash_sources(&plan);
 
-    style::section("Building");
     let started = std::time::Instant::now();
     let outcome = boxset::execute(&plan, &mut reporter, settings.jobs);
     let wall = started.elapsed();

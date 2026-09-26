@@ -296,9 +296,11 @@ fn model_file_name(tier: WhisperModel) -> &'static str {
     }
 }
 
-/// SHA-256 per tier, read from the upstream repo's git-lfs metadata. They are
-/// upstream's record of the bytes, not a digest boxset computed itself — the
-/// first real download of a tier is what confirms one end to end.
+pub fn model_url(tier: WhisperModel) -> String {
+    format!("{}/{}", MODEL_BASE_URL, model_file_name(tier))
+}
+
+/// SHA-256 per tier, read from the upstream repo's git-lfs metadata
 fn model_sha256(tier: WhisperModel) -> &'static str {
     match tier {
         WhisperModel::Tiny => "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
@@ -309,9 +311,9 @@ fn model_sha256(tier: WhisperModel) -> &'static str {
     }
 }
 
-/// Expected size, used only to report download progress before any bytes
-/// arrive; verification is by digest.
-fn model_size_bytes(tier: WhisperModel) -> u64 {
+/// Expected size, used to report download progress before any bytes arrive
+/// and to warn what a first run will fetch.
+pub fn model_size_bytes(tier: WhisperModel) -> u64 {
     match tier {
         WhisperModel::Tiny => 77_691_713,
         WhisperModel::Base => 147_951_465,
@@ -382,7 +384,7 @@ fn download_verified(
     tmp: &std::path::Path,
     reporter: &mut dyn Reporter,
 ) -> Result<(), FetchError> {
-    let url = format!("{}/{}", MODEL_BASE_URL, model_file_name(tier));
+    let url = model_url(tier);
     let mut body = ureq::get(&url).call()?.into_body();
     let total = body.content_length().unwrap_or(model_size_bytes(tier));
 

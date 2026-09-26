@@ -3,15 +3,16 @@
 
 use std::path::Path;
 
-use boxset::config::Codec;
+use boxset::config::{Codec, WhisperModel};
+use boxset::environment::{Requirement, model_size_bytes, model_url};
 use boxset::plan::Plan;
 use boxset::sources::Probe;
 use boxset::task::TaskKind;
 
 use super::style::{
-    Note, bold, bold_dim, dim, dim_gray, icon, pad, print_notes, section, visible_len, yellow,
+    Note, bold, bold_dim, dim, dim_gray, gray, icon, pad, print_notes, section, visible_len, yellow,
 };
-use super::units::{directory, duration, filename, plural, size};
+use super::units::{directory, duration, filename, model_tier, plural, size};
 
 const OVERWRITE_MARK: &str = "×";
 
@@ -137,6 +138,7 @@ pub fn print_plan(
     targets: usize,
     outputs: usize,
     notes: &[Note],
+    requirements: &[Requirement],
 ) {
     section("Plan");
 
@@ -192,6 +194,49 @@ pub fn print_plan(
         );
         println!();
     }
+
+    print_model_downloads(requirements);
+}
+
+fn print_model_downloads(requirements: &[Requirement]) {
+    let tiers: Vec<WhisperModel> = requirements
+        .iter()
+        .filter_map(|req| match req {
+            Requirement::Model(tier) => Some(*tier),
+            _ => None,
+        })
+        .collect();
+
+    if tiers.is_empty() {
+        return;
+    }
+
+    let named = tiers
+        .iter()
+        .map(|&tier| {
+            gray(&format!(
+                "{} ({})",
+                model_tier(tier),
+                size(Some(model_size_bytes(tier)))
+            ))
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    println!(
+        "  {} {} {}",
+        dim("The"),
+        named,
+        dim(&format!(
+            "transcription {} will be downloaded",
+            plural(tiers.len(), "model")
+        ))
+    );
+
+    for tier in tiers {
+        println!("  {}", dim_gray(&model_url(tier)));
+    }
+    println!();
 }
 
 fn source_lines(block: &SourceBlock) -> Vec<String> {

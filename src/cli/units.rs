@@ -3,10 +3,22 @@
 use std::path::Path;
 use std::time::Duration;
 
+use boxset::config::WhisperModel;
+
 pub fn filename(path: &Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+pub fn model_tier(tier: WhisperModel) -> &'static str {
+    match tier {
+        WhisperModel::Tiny => "tiny",
+        WhisperModel::Base => "base",
+        WhisperModel::Small => "small",
+        WhisperModel::Medium => "medium",
+        WhisperModel::Large => "large",
+    }
 }
 
 /// An output directory as it goes into a sentence. A relative path takes a

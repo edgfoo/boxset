@@ -7,7 +7,7 @@
 use std::io::Write;
 use std::time::Duration;
 
-use boxset::config::Codec;
+use boxset::config::{Codec, WhisperModel};
 use boxset::environment::Requirement;
 use boxset::error::BoxsetError;
 use boxset::plan::Plan;
@@ -15,8 +15,11 @@ use boxset::report::{Reporter, TaskOutcome, TaskReport};
 use boxset::task::{TaskId, TaskKind};
 
 use super::errors::task_note;
-use super::style::{bold, bold_green, dim, gray, icon, interactive, note_lines, red};
-use super::units::{directory, elapsed, filename, plural, size};
+use super::style::{
+    bold, bold_green, dim, dim_subtitles_icon, gray, icon, interactive, note_lines, pad, red,
+    visible_len,
+};
+use super::units::{directory, elapsed, filename, model_tier, plural, size};
 
 const CURSOR_UP: &str = "\x1b[A";
 const CLEAR_LINE: &str = "\x1b[2K";
@@ -46,9 +49,26 @@ impl Group {
     }
 }
 
+fn download_name(tier: WhisperModel) -> String {
+    format!(
+        "{}{}{}",
+        dim("Downloading "),
+        gray(model_tier(tier)),
+        dim(" transcription model")
+    )
+}
+
+/// Status of fetching or preparing some requirement before processing videos
+struct Download {
+    tier: WhisperModel,
+    progress: f32,
+    done: bool,
+}
+
 pub struct LiveReporter {
     verbose: bool,
     groups: Vec<Group>,
+    downloads: Vec<Download>,
     name_width: usize,
     /// Groups commit in plan order: one that finishes early waits for those
     /// before it, so the transcript reads in the order the config declares.
@@ -58,7 +78,19 @@ pub struct LiveReporter {
 }
 
 impl LiveReporter {
-    pub fn new(plan: &Plan, verbose: bool) -> Self {
+    pub fn new(plan: &Plan, requirements: &[Requirement], verbose: bool) -> Self {
+        let downloads: Vec<Download> = requirements
+            .iter()
+            .filter_map(|req| match req {
+                Requirement::Model(tier) => Some(Download {
+                    tier: *tier,
+                    progress: 0.0,
+                    done: false,
+                }),
+                _ => None,
+            })
+            .collect();
+
         let mut groups: Vec<Group> = Vec::new();
 
         for task in &plan.tasks {
@@ -95,6 +127,7 @@ impl LiveReporter {
         Self {
             verbose,
             groups,
+            downloads,
             name_width,
             next_to_commit: 0,
             drawn: 0,
@@ -157,6 +190,10 @@ impl LiveReporter {
         }
 
         let mut lines = Vec::new();
+        if !self.downloads.is_empty() && !self.downloads_finished() {
+            lines.extend(self.render_downloads());
+        }
+
         for index in self.next_to_commit..self.groups.len() {
             if self.groups[index].started() {
                 if self.next_to_commit > 0 || !lines.is_empty() {
@@ -170,6 +207,36 @@ impl LiveReporter {
             println!("{line}");
         }
         self.drawn = lines.len();
+    }
+
+    /// The download group, drawn while any fetch is unfinished and committed
+    /// once they all are, so it stays above the encode groups either way.
+    fn render_downloads(&self) -> Vec<String> {
+        let width = self
+            .downloads
+            .iter()
+            .map(|download| visible_len(&download_name(download.tier)))
+            .max()
+            .unwrap_or(0);
+
+        self.downloads
+            .iter()
+            .map(|download| {
+                let name = pad(&download_name(download.tier), width);
+                let icon = dim_subtitles_icon();
+                match download.done {
+                    true => format!("  {} {}    {}", icon, name, bold_green("✓")),
+                    false => {
+                        let percent = format!("{}%", (download.progress * 100.0) as u32);
+                        format!("  {} {}    {:>4}", icon, name, dim(&percent))
+                    }
+                }
+            })
+            .collect()
+    }
+
+    fn downloads_finished(&self) -> bool {
+        self.downloads.iter().all(|download| download.done)
     }
 
     /// `live` keeps unfinished rows as percentages; the committed copy drops
@@ -261,10 +328,49 @@ impl LiveReporter {
 
 impl Reporter for LiveReporter {
     fn requirement_started(&mut self, req: &Requirement) {
-        if let Requirement::Model(tier) = req {
-            self.erase();
-            println!("  {}", dim(&format!("downloading {tier:?} model")));
+        if !matches!(req, Requirement::Model(_)) {
+            return;
         }
+        self.erase();
+        self.redraw();
+    }
+
+    fn requirement_progress(&mut self, req: &Requirement, done: f32) {
+        let Requirement::Model(tier) = req else {
+            return;
+        };
+        let Some(download) = self.downloads.iter_mut().find(|d| d.tier == *tier) else {
+            return;
+        };
+        // Downloads report per chunk; only a changed whole percent redraws.
+        if (done * 100.0) as u32 == (download.progress * 100.0) as u32 {
+            return;
+        }
+
+        download.progress = done;
+        self.erase();
+        self.redraw();
+    }
+
+    /// A finished fetch stays on screen until they all are, then commits as
+    /// one group above the encodes.
+    fn requirement_finished(&mut self, req: &Requirement, outcome: &Result<(), BoxsetError>) {
+        let Requirement::Model(tier) = req else {
+            return;
+        };
+        if let Some(download) = self.downloads.iter_mut().find(|d| d.tier == *tier) {
+            download.progress = 1.0;
+            download.done = outcome.is_ok();
+        }
+
+        self.erase();
+        if self.downloads_finished() {
+            for line in self.render_downloads() {
+                println!("{line}");
+            }
+            println!();
+        }
+        self.redraw();
     }
 
     fn task_started(&mut self, task: TaskId) {
