@@ -13,7 +13,7 @@ use super::style::{
 };
 use super::units::{directory, duration, filename, plural, size};
 
-const OVERWRITE_MARK: &str = "ˣ";
+const OVERWRITE_MARK: &str = "×";
 
 pub struct SourceBlock {
     probe: Probe,

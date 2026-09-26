@@ -5,7 +5,7 @@ use boxset::problem::Severity;
 use boxset::task::TaskKind;
 
 const VIDEO: &str = "⏵";
-const POSTER: &str = "⚀";
+const POSTER: &str = "◪";
 const SUBTITLES: &str = "┅";
 const SECTION: &str = "◆";
 const WARNING: &str = "▲";

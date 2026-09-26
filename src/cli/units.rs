@@ -57,8 +57,10 @@ pub fn size(bytes: Option<u64>) -> String {
     let bytes = bytes as f64;
     if bytes >= MB {
         format!("{:.1}MB", bytes / MB)
-    } else {
+    } else if bytes >= KB {
         format!("{:.0}KB", bytes / KB)
+    } else {
+        format!("{bytes:.0}B")
     }
 }
 
@@ -75,7 +77,8 @@ mod tests {
     }
 
     #[test]
-    fn size_switches_unit_at_a_megabyte() {
+    fn size_switches_unit_at_each_threshold() {
+        assert_eq!(size(Some(512)), "512B");
         assert!(size(Some(1024)).ends_with("KB"));
         assert!(size(Some(1024 * 1024)).ends_with("MB"));
     }
