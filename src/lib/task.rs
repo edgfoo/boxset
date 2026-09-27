@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::config::{Codec, WhisperModel};
+use crate::config::{Codec, TranscriptionModel};
 use crate::settings::{AudioSettings, CodecOptions, Crop, Fps, TimeRange, Timestamp};
 use crate::sources::Probe;
 
@@ -47,8 +47,8 @@ pub enum TaskWork {
     },
     Subtitles {
         language: Option<String>,
-        model: WhisperModel,
-        /// `None` is whisper's own sentence-level segmentation.
+        model: TranscriptionModel,
+        /// `None` leaves cue length to the engine's own segmentation.
         max_cue_chars: Option<u32>,
         /// Transcription covers the trimmed window, so cue timings line up
         /// with the renditions rather than the source.

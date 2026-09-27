@@ -232,7 +232,7 @@ mod tests {
             poster: Some(PosterSettings { at: None }),
             subtitles: Some(SubtitleSettings {
                 language: None,
-                model: crate::config::WhisperModel::Base,
+                model: crate::config::TranscriptionModel::Whisper(crate::config::WhisperTier::Base),
                 max_cue_chars: None,
             }),
             h264: Default::default(),

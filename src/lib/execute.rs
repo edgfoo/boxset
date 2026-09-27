@@ -11,7 +11,7 @@ use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use crate::command;
-use crate::config::{Codec, WhisperModel};
+use crate::config::{Codec, TranscriptionModel};
 use crate::environment::resolve_tool_path;
 use crate::error::{BoxsetError, FfmpegError, Tool, TranscribeError, classify_ffmpeg_failure};
 use crate::plan::Plan;
@@ -168,7 +168,7 @@ fn run_task(task: &Task, tx: &mpsc::Sender<Event>) -> Result<(), BoxsetError> {
 fn run_subtitles_task(
     task: &Task,
     language: Option<&str>,
-    model: WhisperModel,
+    model: TranscriptionModel,
     max_cue_chars: Option<u32>,
     trim: Option<crate::settings::TimeRange>,
     tx: &mpsc::Sender<Event>,
@@ -229,7 +229,7 @@ fn run_subtitles_task(
 fn transcribe_extracted(
     task: &Task,
     audio: &Path,
-    model: WhisperModel,
+    model: TranscriptionModel,
     language: Option<&str>,
     max_cue_chars: Option<u32>,
     tx: &mpsc::Sender<Event>,

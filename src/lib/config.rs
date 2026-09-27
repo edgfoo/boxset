@@ -292,7 +292,7 @@ pub struct PosterSettings {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SubtitleSettings {
     pub language: Option<String>,
-    pub model: Option<WhisperModel>,
+    pub model: Option<TranscriptionModel>,
     pub cue_length: Option<CueLength>,
 }
 
@@ -347,14 +347,71 @@ impl<'de> Deserialize<'de> for CueLength {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum WhisperModel {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WhisperTier {
     Tiny,
     Base,
     Small,
     Medium,
     Large,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TranscriptionModel {
+    Whisper(WhisperTier),
+}
+
+impl TranscriptionModel {
+    pub fn name(self) -> &'static str {
+        match self {
+            TranscriptionModel::Whisper(WhisperTier::Tiny) => "tiny",
+            TranscriptionModel::Whisper(WhisperTier::Base) => "base",
+            TranscriptionModel::Whisper(WhisperTier::Small) => "small",
+            TranscriptionModel::Whisper(WhisperTier::Medium) => "medium",
+            TranscriptionModel::Whisper(WhisperTier::Large) => "large",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        ALL_MODELS.iter().copied().find(|m| m.name() == raw)
+    }
+}
+
+pub const ALL_MODELS: [TranscriptionModel; 5] = [
+    TranscriptionModel::Whisper(WhisperTier::Tiny),
+    TranscriptionModel::Whisper(WhisperTier::Base),
+    TranscriptionModel::Whisper(WhisperTier::Small),
+    TranscriptionModel::Whisper(WhisperTier::Medium),
+    TranscriptionModel::Whisper(WhisperTier::Large),
+];
+
+impl std::fmt::Display for TranscriptionModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl<'de> Deserialize<'de> for TranscriptionModel {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::{Error, Unexpected};
+
+        let raw = String::deserialize(deserializer)?;
+        match TranscriptionModel::parse(&raw) {
+            Some(model) => Ok(model),
+            None => Err(D::Error::invalid_value(
+                Unexpected::Str(&raw),
+                &model_names().as_str(),
+            )),
+        }
+    }
+}
+
+pub fn model_names() -> String {
+    ALL_MODELS
+        .iter()
+        .map(|m| m.name())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Per-codec overrides: an inline table, since `[target.h264]` in a TOML array

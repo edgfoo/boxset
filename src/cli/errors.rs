@@ -203,15 +203,15 @@ fn error_wording(error: &BoxsetError) -> (String, Vec<String>) {
                 }
                 TranscribeError::ModelLoad { model, .. } => {
                     vec![format!(
-                        "The {model:?} model wouldn't load; it may be a bad download."
+                        "The {model} model wouldn't load; it may be a bad download."
                     )]
                 }
                 TranscribeError::AudioExtract(e) => vec![format!(
                     "Couldn't extract audio to transcribe: {}",
                     ffmpeg_cause(&e.kind)
                 )],
-                TranscribeError::Inference(_) => {
-                    vec!["Whisper failed while transcribing.".to_string()]
+                TranscribeError::Inference { model, .. } => {
+                    vec![format!("The {model} model failed while transcribing.")]
                 }
             };
             ("boxset couldn't make subtitles".to_string(), detail)

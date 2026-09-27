@@ -7,7 +7,7 @@
 use std::io::Write;
 use std::time::Duration;
 
-use boxset::config::{Codec, WhisperModel};
+use boxset::config::{Codec, TranscriptionModel};
 use boxset::environment::Requirement;
 use boxset::error::BoxsetError;
 use boxset::plan::Plan;
@@ -19,7 +19,7 @@ use super::style::{
     bold, bold_green, dim, dim_subtitles_icon, gray, icon, interactive, note_lines, pad, red,
     visible_len,
 };
-use super::units::{directory, elapsed, filename, model_tier, plural, size};
+use super::units::{directory, elapsed, filename, plural, size};
 
 const CURSOR_UP: &str = "\x1b[A";
 const CLEAR_LINE: &str = "\x1b[2K";
@@ -49,18 +49,18 @@ impl Group {
     }
 }
 
-fn download_name(tier: WhisperModel) -> String {
+fn download_name(model: TranscriptionModel) -> String {
     format!(
         "{}{}{}",
         dim("Downloading "),
-        gray(model_tier(tier)),
+        gray(model.name()),
         dim(" transcription model")
     )
 }
 
 /// Status of fetching or preparing some requirement before processing videos
 struct Download {
-    tier: WhisperModel,
+    model: TranscriptionModel,
     progress: f32,
     done: bool,
 }
@@ -82,8 +82,8 @@ impl LiveReporter {
         let downloads: Vec<Download> = requirements
             .iter()
             .filter_map(|req| match req {
-                Requirement::Model(tier) => Some(Download {
-                    tier: *tier,
+                Requirement::Model(model) => Some(Download {
+                    model: *model,
                     progress: 0.0,
                     done: false,
                 }),
@@ -215,14 +215,14 @@ impl LiveReporter {
         let width = self
             .downloads
             .iter()
-            .map(|download| visible_len(&download_name(download.tier)))
+            .map(|download| visible_len(&download_name(download.model)))
             .max()
             .unwrap_or(0);
 
         self.downloads
             .iter()
             .map(|download| {
-                let name = pad(&download_name(download.tier), width);
+                let name = pad(&download_name(download.model), width);
                 let icon = dim_subtitles_icon();
                 match download.done {
                     true => format!("  {} {}    {}", icon, name, bold_green("✓")),
@@ -336,10 +336,10 @@ impl Reporter for LiveReporter {
     }
 
     fn requirement_progress(&mut self, req: &Requirement, done: f32) {
-        let Requirement::Model(tier) = req else {
+        let Requirement::Model(model) = req else {
             return;
         };
-        let Some(download) = self.downloads.iter_mut().find(|d| d.tier == *tier) else {
+        let Some(download) = self.downloads.iter_mut().find(|d| d.model == *model) else {
             return;
         };
         // Downloads report per chunk; only a changed whole percent redraws.
@@ -355,10 +355,10 @@ impl Reporter for LiveReporter {
     /// A finished fetch stays on screen until they all are, then commits as
     /// one group above the encodes.
     fn requirement_finished(&mut self, req: &Requirement, outcome: &Result<(), BoxsetError>) {
-        let Requirement::Model(tier) = req else {
+        let Requirement::Model(model) = req else {
             return;
         };
-        if let Some(download) = self.downloads.iter_mut().find(|d| d.tier == *tier) {
+        if let Some(download) = self.downloads.iter_mut().find(|d| d.model == *model) {
             download.progress = 1.0;
             download.done = outcome.is_ok();
         }

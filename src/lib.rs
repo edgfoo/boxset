@@ -28,7 +28,7 @@ pub mod settings;
 pub mod sources;
 #[path = "lib/task.rs"]
 pub mod task;
-#[path = "lib/transcribe.rs"]
+#[path = "lib/transcribe/mod.rs"]
 pub mod transcribe;
 #[path = "lib/validate.rs"]
 pub mod validate;

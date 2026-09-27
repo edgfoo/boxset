@@ -158,9 +158,16 @@ wrong classification is worse than none.
 Whisper install and no Python anywhere in the path. Building it needs a current
 cmake. Built with the `metal` feature on macOS, plain CPU elsewhere.
 
-**Whisper model weights** are fetched once into the OS cache directory and shared
-across projects, rather than embedded, to keep the download small and allow
-choosing a quality tier.
+**Transcription engines** sit behind `TranscriptionModel`, which names an engine
+and a size together so no pairing that doesn't exist can be written. Each engine
+is a module in `src/lib/transcribe/` owning its weights table as a `ModelSource`;
+`environment` fetches and verifies without knowing which engine it has. Adding
+one is a module, a variant, and two match arms.
+
+**Model weights** are fetched once into the OS cache directory and shared across
+projects, rather than embedded, to keep the download small and allow choosing a
+quality tier. One directory holds every engine's files, so filenames must be
+unique across engines.
 
 **Encoding changes need a quality measurement, not a file size.** The vp9 tiers
 looked wrong once — larger files than h264 at the same tier — but measuring with
@@ -194,7 +201,6 @@ own push.
 - Pure stages — `validate`, `resolve`, `plan`, quality expansion, ladder
   derivation — are tested with hand-built values and no subprocess. Integration
   tests in `tests/` drive the real binary against small real-world fixtures.
-- Whisper and the TUI are untested.
 
 The user is an experienced developer-journalist with well-developed opinions
 about video encoding, refined over many projects. Encoding recipes they provide

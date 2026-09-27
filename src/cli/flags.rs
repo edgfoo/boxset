@@ -8,7 +8,8 @@ use clap::Args;
 
 use boxset::config::{
     Anchor, AudioField, Codec, CodecOverrides, Crop, CueLength, Fps, PosterField, PosterSettings,
-    Quality, SubtitleSettings, SubtitlesField, TargetConfig, TimeRange, WhisperModel,
+    Quality, SubtitleSettings, SubtitlesField, TargetConfig, TimeRange, TranscriptionModel,
+    model_names,
 };
 use boxset::problem::Severity;
 
@@ -336,19 +337,9 @@ fn parse_codec(raw: &str) -> Result<Codec, Note> {
     }
 }
 
-fn parse_model(raw: &str) -> Result<WhisperModel, Note> {
-    match raw {
-        "tiny" => Ok(WhisperModel::Tiny),
-        "base" => Ok(WhisperModel::Base),
-        "small" => Ok(WhisperModel::Small),
-        "medium" => Ok(WhisperModel::Medium),
-        "large" => Ok(WhisperModel::Large),
-        other => Err(unrecognised_value(
-            other,
-            "a subtitle model",
-            "tiny, base, small, medium or large",
-        )),
-    }
+fn parse_model(raw: &str) -> Result<TranscriptionModel, Note> {
+    TranscriptionModel::parse(raw)
+        .ok_or_else(|| unrecognised_value(raw, "a subtitle model", &model_names()))
 }
 
 fn parse_cue_length(raw: &str) -> Result<CueLength, Note> {

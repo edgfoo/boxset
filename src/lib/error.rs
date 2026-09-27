@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::config::WhisperModel;
+use crate::config::TranscriptionModel;
 use crate::task::TaskId;
 
 #[derive(Debug, Error)]
@@ -27,9 +27,9 @@ pub enum BoxsetError {
     FfmpegTooOld { found: String, minimum: (u32, u32) },
     #[error("ffmpeg is missing encoders: {}", encoders.join(", "))]
     EncodersMissing { encoders: Vec<&'static str> },
-    #[error("model fetch failed: {model:?}")]
+    #[error("model fetch failed: {model}")]
     ModelFetchFailed {
-        model: WhisperModel,
+        model: TranscriptionModel,
         #[source]
         source: FetchError,
     },
@@ -43,16 +43,18 @@ pub enum BoxsetError {
 
 #[derive(Debug, Error)]
 pub enum TranscribeError {
-    /// The cached model file wouldn't load: absent, truncated, or not a GGML model
-    #[error("couldn't load the {model:?} model from {}", path.display())]
+    #[error("couldn't load the {model} model from {}", path.display())]
     ModelLoad {
-        model: WhisperModel,
+        model: TranscriptionModel,
         path: PathBuf,
-        source: whisper_rs::WhisperError,
+        detail: String,
     },
-    #[error("whisper failed while transcribing")]
-    Inference(#[source] whisper_rs::WhisperError),
-    /// Extracting 16kHz mono PCM for whisper is an ffmpeg call
+    #[error("{model} failed while transcribing")]
+    Inference {
+        model: TranscriptionModel,
+        detail: String,
+    },
+    /// Extracting 16kHz mono PCM for the engine is an ffmpeg call
     #[error("couldn't extract audio to transcribe")]
     AudioExtract(#[source] FfmpegError),
     #[error("the source has no audio track to transcribe")]

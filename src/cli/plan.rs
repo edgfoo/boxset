@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use boxset::config::{Codec, WhisperModel};
+use boxset::config::{Codec, TranscriptionModel};
 use boxset::environment::{Requirement, model_size_bytes, model_url};
 use boxset::plan::Plan;
 use boxset::sources::Probe;
@@ -12,7 +12,7 @@ use boxset::task::TaskKind;
 use super::style::{
     Note, bold, bold_dim, dim, dim_gray, gray, icon, pad, print_notes, section, visible_len, yellow,
 };
-use super::units::{directory, duration, filename, model_tier, plural, size};
+use super::units::{directory, duration, filename, plural, size};
 
 const OVERWRITE_MARK: &str = "×";
 
@@ -199,25 +199,25 @@ pub fn print_plan(
 }
 
 fn print_model_downloads(requirements: &[Requirement]) {
-    let tiers: Vec<WhisperModel> = requirements
+    let models: Vec<TranscriptionModel> = requirements
         .iter()
         .filter_map(|req| match req {
-            Requirement::Model(tier) => Some(*tier),
+            Requirement::Model(model) => Some(*model),
             _ => None,
         })
         .collect();
 
-    if tiers.is_empty() {
+    if models.is_empty() {
         return;
     }
 
-    let named = tiers
+    let named = models
         .iter()
-        .map(|&tier| {
+        .map(|&model| {
             gray(&format!(
                 "{} ({})",
-                model_tier(tier),
-                size(Some(model_size_bytes(tier)))
+                model.name(),
+                size(Some(model_size_bytes(model)))
             ))
         })
         .collect::<Vec<_>>()
@@ -229,12 +229,12 @@ fn print_model_downloads(requirements: &[Requirement]) {
         named,
         dim(&format!(
             "transcription {} will be downloaded",
-            plural(tiers.len(), "model")
+            plural(models.len(), "model")
         ))
     );
 
-    for tier in tiers {
-        println!("  {}", dim_gray(&model_url(tier)));
+    for model in models {
+        println!("  {}", dim_gray(&model_url(model)));
     }
     println!();
 }

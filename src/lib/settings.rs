@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub use crate::config::{Anchor, Codec, CodecOverrides, Quality, WhisperModel};
+pub use crate::config::{Anchor, Codec, CodecOverrides, Quality, TranscriptionModel};
 
 #[derive(Debug, Clone)]
 pub struct Settings {
@@ -73,8 +73,8 @@ pub struct PosterSettings {
 #[derive(Debug, Clone)]
 pub struct SubtitleSettings {
     pub language: Option<String>,
-    pub model: WhisperModel,
-    /// `None` is whisper's own sentence-level segmentation.
+    pub model: TranscriptionModel,
+    /// `None` leaves cue length to the engine's own segmentation.
     pub max_cue_chars: Option<u32>,
 }
 

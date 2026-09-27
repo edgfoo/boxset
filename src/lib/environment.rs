@@ -1,5 +1,5 @@
 //! What a plan needs beyond the tasks themselves: ffmpeg, ffprobe, and any
-//! Whisper model tier not yet cached.
+//! transcription model not yet cached.
 
 use std::collections::HashSet;
 use std::io::{Read, Write};
@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use crate::config::WhisperModel;
+use crate::config::{ALL_MODELS, TranscriptionModel};
 use crate::error::{BoxsetError, FetchError, Tool};
 use crate::plan::Plan;
 use crate::report::{Phase, Reporter};
@@ -23,7 +23,7 @@ pub enum Requirement {
         found: String,
         minimum: (u32, u32),
     },
-    Model(WhisperModel),
+    Model(TranscriptionModel),
 }
 
 /// Inspect only: interrogates ffmpeg and reads the model cache, but writes
@@ -42,7 +42,6 @@ pub fn check_environment(plan: &Plan) -> Vec<Requirement> {
         check_encoders(&ffmpeg, plan, &mut requirements);
     }
 
-    // Distinct tiers only: several targets asking for `small` share one download.
     for task in &plan.tasks {
         let TaskWork::Subtitles { model, .. } = task.work else {
             continue;
@@ -210,7 +209,7 @@ pub fn ensure_met(
 ) -> Result<(), BoxsetError> {
     ensure_available(requirements)?;
 
-    let models: Vec<WhisperModel> = requirements
+    let models: Vec<TranscriptionModel> = requirements
         .iter()
         .filter_map(|r| match r {
             Requirement::Model(m) => Some(*m),
@@ -267,78 +266,36 @@ fn which_on_path(name: &str) -> Option<PathBuf> {
 
 #[derive(Debug, Clone)]
 pub struct ModelInfo {
-    pub tier: WhisperModel,
+    pub model: TranscriptionModel,
     pub cached: bool,
     pub path: PathBuf,
     pub size_bytes: Option<u64>,
 }
 
-pub const ALL_MODELS: [WhisperModel; 5] = [
-    WhisperModel::Tiny,
-    WhisperModel::Base,
-    WhisperModel::Small,
-    WhisperModel::Medium,
-    WhisperModel::Large,
-];
-
-const MODEL_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
-
-/// The GGML file for a tier. `large` has no unversioned file in the upstream
-/// repo, so it pins a version: turbo, which is half the size of large-v3 for
-/// a slight accuracy cost.
-fn model_file_name(tier: WhisperModel) -> &'static str {
-    match tier {
-        WhisperModel::Tiny => "ggml-tiny.bin",
-        WhisperModel::Base => "ggml-base.bin",
-        WhisperModel::Small => "ggml-small.bin",
-        WhisperModel::Medium => "ggml-medium.bin",
-        WhisperModel::Large => "ggml-large-v3-turbo.bin",
-    }
+pub fn model_url(model: TranscriptionModel) -> String {
+    crate::transcribe::model_source(model).url
 }
 
-pub fn model_url(tier: WhisperModel) -> String {
-    format!("{}/{}", MODEL_BASE_URL, model_file_name(tier))
+pub fn model_size_bytes(model: TranscriptionModel) -> u64 {
+    crate::transcribe::model_source(model).size_bytes
 }
 
-/// SHA-256 per tier, read from the upstream repo's git-lfs metadata
-fn model_sha256(tier: WhisperModel) -> &'static str {
-    match tier {
-        WhisperModel::Tiny => "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
-        WhisperModel::Base => "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
-        WhisperModel::Small => "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
-        WhisperModel::Medium => "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
-        WhisperModel::Large => "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
-    }
+pub fn model_path(model: TranscriptionModel) -> PathBuf {
+    cache_dir().join(crate::transcribe::model_source(model).file_name)
 }
 
-/// Expected size, used to report download progress before any bytes arrive
-/// and to warn what a first run will fetch.
-pub fn model_size_bytes(tier: WhisperModel) -> u64 {
-    match tier {
-        WhisperModel::Tiny => 77_691_713,
-        WhisperModel::Base => 147_951_465,
-        WhisperModel::Small => 487_601_967,
-        WhisperModel::Medium => 1_533_763_059,
-        WhisperModel::Large => 1_624_555_275,
-    }
-}
-
-pub fn model_path(tier: WhisperModel) -> PathBuf {
-    cache_dir().join(model_file_name(tier))
-}
-
-fn is_cached(tier: WhisperModel) -> bool {
-    model_path(tier).is_file()
+fn is_cached(model: TranscriptionModel) -> bool {
+    model_path(model).is_file()
 }
 
 pub fn list_models() -> Vec<ModelInfo> {
     ALL_MODELS
         .iter()
-        .map(|&tier| {
-            let path = model_path(tier);
+        .map(|&model| {
+            let path = model_path(model);
             let size_bytes = std::fs::metadata(&path).ok().map(|m| m.len());
             ModelInfo {
-                tier,
+                model,
                 cached: size_bytes.is_some(),
                 path,
                 size_bytes,
@@ -347,13 +304,16 @@ pub fn list_models() -> Vec<ModelInfo> {
         .collect()
 }
 
-pub fn install_model(tier: WhisperModel, reporter: &mut dyn Reporter) -> Result<(), BoxsetError> {
-    if is_cached(tier) {
+pub fn install_model(
+    model: TranscriptionModel,
+    reporter: &mut dyn Reporter,
+) -> Result<(), BoxsetError> {
+    if is_cached(model) {
         return Ok(());
     }
 
     let dir = cache_dir();
-    let path = model_path(tier);
+    let path = model_path(model);
     std::fs::create_dir_all(&dir).map_err(|source| BoxsetError::WriteFailed {
         path: dir.clone(),
         source,
@@ -361,8 +321,10 @@ pub fn install_model(tier: WhisperModel, reporter: &mut dyn Reporter) -> Result<
 
     // Downloaded beside the final path and renamed on success, so an
     // interrupted fetch never leaves a half file where a valid model was.
-    let tmp = path.with_extension("bin.partial");
-    let result = download_verified(tier, &tmp, reporter);
+    let mut tmp = path.clone().into_os_string();
+    tmp.push(".partial");
+    let tmp = PathBuf::from(tmp);
+    let result = download_verified(model, &tmp, reporter);
 
     match result {
         Ok(()) => std::fs::rename(&tmp, &path).map_err(|source| BoxsetError::WriteFailed {
@@ -371,29 +333,26 @@ pub fn install_model(tier: WhisperModel, reporter: &mut dyn Reporter) -> Result<
         }),
         Err(source) => {
             let _ = std::fs::remove_file(&tmp);
-            Err(BoxsetError::ModelFetchFailed {
-                model: tier,
-                source,
-            })
+            Err(BoxsetError::ModelFetchFailed { model, source })
         }
     }
 }
 
 fn download_verified(
-    tier: WhisperModel,
+    model: TranscriptionModel,
     tmp: &std::path::Path,
     reporter: &mut dyn Reporter,
 ) -> Result<(), FetchError> {
-    let url = model_url(tier);
-    let mut body = ureq::get(&url).call()?.into_body();
-    let total = body.content_length().unwrap_or(model_size_bytes(tier));
+    let source = crate::transcribe::model_source(model);
+    let mut body = ureq::get(&source.url).call()?.into_body();
+    let total = body.content_length().unwrap_or(source.size_bytes);
 
     let mut reader = body.as_reader();
     let mut file = std::fs::File::create(tmp)?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 1 << 16];
     let mut done: u64 = 0;
-    let requirement = Requirement::Model(tier);
+    let requirement = Requirement::Model(model);
 
     loop {
         let n = reader.read(&mut buf)?;
@@ -408,10 +367,9 @@ fn download_verified(
     file.flush()?;
 
     let actual = crate::lock::hex(&hasher.finalize());
-    let expected = model_sha256(tier);
-    if actual != expected {
+    if actual != source.sha256 {
         return Err(FetchError::ChecksumMismatch {
-            expected: expected.to_string(),
+            expected: source.sha256.to_string(),
             actual,
         });
     }
@@ -419,8 +377,8 @@ fn download_verified(
     Ok(())
 }
 
-pub fn remove_model(tier: WhisperModel) -> Result<(), BoxsetError> {
-    let path = model_path(tier);
+pub fn remove_model(model: TranscriptionModel) -> Result<(), BoxsetError> {
+    let path = model_path(model);
     match std::fs::remove_file(&path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -428,8 +386,6 @@ pub fn remove_model(tier: WhisperModel) -> Result<(), BoxsetError> {
     }
 }
 
-/// Not configurable: the cache is keyed by tier and shared across projects,
-/// so every target on the machine asking for `small` reuses one download.
 fn cache_dir() -> PathBuf {
     let base = directories::BaseDirs::new()
         .map(|d| d.cache_dir().to_path_buf())
@@ -442,11 +398,15 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::config::Codec;
+    use crate::config::{Codec, WhisperTier};
     use crate::sources::Probe;
     use crate::task::{Task, TaskId, TaskKind};
 
-    fn subtitles_task(target: usize, model: WhisperModel) -> Task {
+    fn whisper(tier: WhisperTier) -> TranscriptionModel {
+        TranscriptionModel::Whisper(tier)
+    }
+
+    fn subtitles_task(target: usize, model: TranscriptionModel) -> Task {
         Task {
             id: TaskId {
                 target,
@@ -475,7 +435,7 @@ mod tests {
         }
     }
 
-    fn models_of(plan: &Plan) -> Vec<WhisperModel> {
+    fn models_of(plan: &Plan) -> Vec<TranscriptionModel> {
         check_environment(plan)
             .into_iter()
             .filter_map(|r| match r {
@@ -486,17 +446,17 @@ mod tests {
     }
 
     #[test]
-    fn repeated_tier_is_required_once() {
+    fn repeated_model_is_required_once() {
         let plan = Plan {
             tasks: vec![
-                subtitles_task(0, WhisperModel::Small),
-                subtitles_task(1, WhisperModel::Small),
-                subtitles_task(2, WhisperModel::Medium),
+                subtitles_task(0, whisper(WhisperTier::Small)),
+                subtitles_task(1, whisper(WhisperTier::Small)),
+                subtitles_task(2, whisper(WhisperTier::Medium)),
             ],
         };
 
         let models = models_of(&plan);
-        let uncached: Vec<_> = [WhisperModel::Small, WhisperModel::Medium]
+        let uncached: Vec<_> = [whisper(WhisperTier::Small), whisper(WhisperTier::Medium)]
             .into_iter()
             .filter(|&t| !is_cached(t))
             .collect();
@@ -510,7 +470,7 @@ mod tests {
     }
 
     fn rendition_task(codec: Codec, audio: bool) -> Task {
-        let Task { probe, .. } = subtitles_task(0, WhisperModel::Tiny);
+        let Task { probe, .. } = subtitles_task(0, whisper(WhisperTier::Tiny));
         Task {
             id: TaskId {
                 target: 0,
@@ -534,8 +494,6 @@ mod tests {
         }
     }
 
-    /// The point of scoping to the plan: an ffmpeg without libsvtav1 is only a
-    /// problem for a run that asked for av1.
     #[test]
     fn only_the_codecs_in_the_plan_are_wanted() {
         let plan = Plan {
@@ -555,8 +513,6 @@ mod tests {
         assert_eq!(plan_encoders(&plan), ["libvpx-vp9"]);
     }
 
-    /// An ffmpeg boxset couldn't interrogate reports `unknown`, which must not
-    /// read as a version older than the floor.
     #[test]
     fn an_unreadable_version_is_not_too_old() {
         assert_eq!(parse_version("unknown"), None);
@@ -569,7 +525,7 @@ mod tests {
         impl Reporter for Silent {}
 
         let requirements = vec![
-            Requirement::Model(WhisperModel::Tiny),
+            Requirement::Model(whisper(WhisperTier::Tiny)),
             Requirement::Tool(Tool::Ffmpeg),
         ];
         let err = ensure_met(&requirements, &mut Silent).unwrap_err();
@@ -586,22 +542,22 @@ mod tests {
         assert!(ensure_met(&[], &mut Silent).is_ok());
     }
 
-    /// The cache is keyed by filename, so two tiers sharing one would serve
-    /// the wrong weights; a shared digest would pass verification for both.
     #[test]
-    fn each_tier_has_a_distinct_file_and_digest() {
-        for tier in ALL_MODELS {
+    fn each_model_has_a_distinct_file_and_digest() {
+        for model in ALL_MODELS {
+            let source = crate::transcribe::model_source(model);
+
             let files = ALL_MODELS
                 .iter()
-                .filter(|&&t| model_file_name(t) == model_file_name(tier))
+                .filter(|&&m| crate::transcribe::model_source(m).file_name == source.file_name)
                 .count();
-            assert_eq!(files, 1, "{tier:?} shares a file with another tier");
+            assert_eq!(files, 1, "{model} shares a file with another model");
 
             let digests = ALL_MODELS
                 .iter()
-                .filter(|&&t| model_sha256(t) == model_sha256(tier))
+                .filter(|&&m| crate::transcribe::model_source(m).sha256 == source.sha256)
                 .count();
-            assert_eq!(digests, 1, "{tier:?} shares a digest with another tier");
+            assert_eq!(digests, 1, "{model} shares a digest with another model");
         }
     }
 }
