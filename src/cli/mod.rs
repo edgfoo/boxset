@@ -126,6 +126,7 @@ pub fn build(
                 "Target settings come from boxset.toml.".to_string(),
                 format!("Try: boxset <video> {flag} ...   for a one-off"),
             ],
+            cause: None,
         });
     }
 
@@ -183,6 +184,7 @@ fn missing_config_note(given: Option<&Path>, path: &Path) -> style::Note {
         locator: None,
         message,
         detail: vec!["Try: boxset <video>   to prepare one video without a config".to_string()],
+        cause: None,
     }
 }
 
@@ -245,6 +247,7 @@ fn run(
                 ],
                 None => vec!["It defines no targets.".to_string()],
             },
+            cause: None,
         });
     }
 
@@ -420,6 +423,7 @@ fn write_lockfile(
             locator: None,
             message: format!("couldn't write {}: {e}", boxset::lock::LOCK_FILE),
             detail: vec!["Your outputs are fine; boxset will re-encode them next run.".to_string()],
+            cause: None,
         }]);
     }
 }

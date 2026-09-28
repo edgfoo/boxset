@@ -1,8 +1,8 @@
 //! `resolve()`: config plus probe in, total `Settings` out.
 
 use crate::config::{
-    self, Anchor, AudioField, Codec, CodecOverrides, CueLength, PosterField, Quality,
-    SubtitlesField, TargetConfig, TranscriptionModel,
+    self, Anchor, AudioField, Codec, CodecOverrides, PosterField, Quality, SubtitlesField,
+    TargetConfig, TranscriptionModel,
 };
 use crate::settings::{
     AudioSettings, CodecOptions, Crop, Fps, PosterSettings, Settings, SubtitleSettings, TimeRange,
@@ -188,26 +188,20 @@ fn resolve_poster(field: Option<&PosterField>) -> Option<PosterSettings> {
     }
 }
 
-const DEFAULT_CUE_LENGTH: CueLength = CueLength::Short;
-
-const DEFAULT_MODEL: TranscriptionModel = TranscriptionModel::Whisper(config::WhisperTier::Base);
+/// Parakeet gives us word-level timestamps, letting us apply our nice
+/// cue splitting heuristics.
+const DEFAULT_MODEL: TranscriptionModel =
+    TranscriptionModel::Parakeet(config::ParakeetTier::Multilingual);
 
 /// `None` means `subtitles = false`.
 fn resolve_subtitles(field: Option<&SubtitlesField>) -> Option<SubtitleSettings> {
     match field {
         Some(SubtitlesField::Off(false)) => None,
         Some(SubtitlesField::Settings(settings)) => Some(SubtitleSettings {
-            language: settings.language.clone(),
             model: settings.model.unwrap_or(DEFAULT_MODEL),
-            max_cue_chars: settings
-                .cue_length
-                .unwrap_or(DEFAULT_CUE_LENGTH)
-                .max_chars(),
         }),
         Some(SubtitlesField::Off(true)) | None => Some(SubtitleSettings {
-            language: None,
             model: DEFAULT_MODEL,
-            max_cue_chars: DEFAULT_CUE_LENGTH.max_chars(),
         }),
     }
 }

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use clap::Args;
 
 use boxset::config::{
-    Anchor, AudioField, Codec, CodecOverrides, Crop, CueLength, Fps, PosterField, PosterSettings,
+    Anchor, AudioField, Codec, CodecOverrides, Crop, Fps, PosterField, PosterSettings,
     Quality, SubtitleSettings, SubtitlesField, TargetConfig, TimeRange, TranscriptionModel,
     model_names,
 };
@@ -41,12 +41,8 @@ pub struct FieldFlags {
     pub poster: Option<Option<String>>,
     #[arg(long = "no-subs")]
     pub no_subs: bool,
-    #[arg(long = "subs-lang")]
-    pub subs_lang: Option<String>,
     #[arg(long = "subs-model")]
     pub subs_model: Option<String>,
-    #[arg(long = "subs-cue-len")]
-    pub subs_cue_len: Option<String>,
 
     #[arg(long = "h264-crf")]
     pub h264_crf: Option<u32>,
@@ -115,7 +111,7 @@ pub const BUILD_FLAGS: &[&str] = &["--target", "--config", "-c"];
 
 /// Every field flag, paired with whether this invocation gave it. One missing
 /// is one `build` accepts and silently ignores.
-fn field_flags(fields: &FieldFlags) -> [(&'static str, bool); 30] {
+fn field_flags(fields: &FieldFlags) -> [(&'static str, bool); 28] {
     [
         ("--name", fields.name.is_some()),
         ("--quality", fields.quality.is_some()),
@@ -129,9 +125,7 @@ fn field_flags(fields: &FieldFlags) -> [(&'static str, bool); 30] {
         ("--no-poster", fields.no_poster),
         ("--poster", fields.poster.is_some()),
         ("--no-subs", fields.no_subs),
-        ("--subs-lang", fields.subs_lang.is_some()),
         ("--subs-model", fields.subs_model.is_some()),
-        ("--subs-cue-len", fields.subs_cue_len.is_some()),
         ("--h264-crf", fields.h264_crf.is_some()),
         ("--h264-preset", fields.h264_preset.is_some()),
         ("--h264-profile", fields.h264_profile.is_some()),
@@ -228,6 +222,7 @@ fn unrecognised_value(given: &str, what: &str, expected: &str) -> Note {
         locator: None,
         message: format!("`{given}` isn't {what}"),
         detail: vec![format!("Expected {expected}.")],
+        cause: None,
     }
 }
 
@@ -261,17 +256,11 @@ fn subtitles_field(flags: &FieldFlags) -> Result<Option<SubtitlesField>, Note> {
     if flags.no_subs {
         return Ok(Some(SubtitlesField::Off(false)));
     }
-    if flags.subs_lang.is_none() && flags.subs_model.is_none() && flags.subs_cue_len.is_none() {
+    if flags.subs_model.is_none() {
         return Ok(None);
     }
     Ok(Some(SubtitlesField::Settings(SubtitleSettings {
-        language: flags.subs_lang.clone(),
         model: flags.subs_model.as_deref().map(parse_model).transpose()?,
-        cue_length: flags
-            .subs_cue_len
-            .as_deref()
-            .map(parse_cue_length)
-            .transpose()?,
     })))
 }
 
@@ -342,21 +331,6 @@ fn parse_model(raw: &str) -> Result<TranscriptionModel, Note> {
         .ok_or_else(|| unrecognised_value(raw, "a subtitle model", &model_names()))
 }
 
-fn parse_cue_length(raw: &str) -> Result<CueLength, Note> {
-    match raw {
-        "short" => Ok(CueLength::Short),
-        "medium" => Ok(CueLength::Medium),
-        "long" => Ok(CueLength::Long),
-        other => match other.parse::<u32>() {
-            Ok(chars) if chars > 0 => Ok(CueLength::Chars(chars)),
-            _ => Err(unrecognised_value(
-                other,
-                "max subtitle cue length",
-                "short, medium, long or a character count",
-            )),
-        },
-    }
-}
 
 fn parse_anchor(raw: &str) -> Result<Anchor, Note> {
     match raw {
@@ -382,6 +356,7 @@ fn parse_trim(raw: &str) -> Result<TimeRange, Note> {
             locator: None,
             message: format!("`{raw}` isn't a trim range"),
             detail: vec!["Expected START-END, like 0:05-0:30.".to_string()],
+            cause: None,
         });
     };
     let field = |s: &str| (!s.trim().is_empty()).then(|| s.trim().to_string());

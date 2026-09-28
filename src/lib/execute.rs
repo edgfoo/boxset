@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use crate::command;
@@ -152,13 +152,7 @@ fn temp_path(output: &Path) -> PathBuf {
 
 fn run_task(task: &Task, tx: &mpsc::Sender<Event>) -> Result<(), BoxsetError> {
     match &task.work {
-        TaskWork::Subtitles {
-            language,
-            model,
-            max_cue_chars,
-            trim,
-            ..
-        } => run_subtitles_task(task, language.as_deref(), *model, *max_cue_chars, *trim, tx),
+        TaskWork::Subtitles { model, trim, .. } => run_subtitles_task(task, *model, *trim, tx),
         _ => run_ffmpeg_task(task, tx),
     }
 }
@@ -167,9 +161,7 @@ fn run_task(task: &Task, tx: &mpsc::Sender<Event>) -> Result<(), BoxsetError> {
 /// extraction is a visible wait of its own on a long source.
 fn run_subtitles_task(
     task: &Task,
-    language: Option<&str>,
     model: TranscriptionModel,
-    max_cue_chars: Option<u32>,
     trim: Option<crate::settings::TimeRange>,
     tx: &mpsc::Sender<Event>,
 ) -> Result<(), BoxsetError> {
@@ -206,7 +198,7 @@ fn run_subtitles_task(
     }
 
     let _ = tx.send(Event::Stage(task.id, stages[1], 2, stages.len() as u32));
-    let result = transcribe_extracted(task, &audio, model, language, max_cue_chars, tx);
+    let result = transcribe_extracted(task, &audio, model, tx);
     let _ = std::fs::remove_file(&audio);
     let cues = result.map_err(fail)?;
 
@@ -230,8 +222,6 @@ fn transcribe_extracted(
     task: &Task,
     audio: &Path,
     model: TranscriptionModel,
-    language: Option<&str>,
-    max_cue_chars: Option<u32>,
     tx: &mpsc::Sender<Event>,
 ) -> Result<Vec<transcribe::Cue>, TranscribeError> {
     let pcm = std::fs::read(audio).map_err(|e| {
@@ -241,24 +231,15 @@ fn transcribe_extracted(
         })
     })?;
 
-    let stage = command::subtitle_stages()[1];
-    // whisper-rs never drops the callback, so it must not hold a Sender: that
-    // clone would keep the channel open and `execute` would never return.
-    let percent = Arc::new(AtomicUsize::new(0));
-    let counter = Arc::clone(&percent);
     let cues = transcribe::transcribe(
         model,
         &crate::environment::model_path(model),
         &transcribe::pcm_s16le_to_f32(&pcm),
-        language,
-        max_cue_chars,
-        move |done| {
-            counter.store((done * 100.0) as usize, Ordering::Relaxed);
-        },
     )?;
 
-    let done = percent.load(Ordering::Relaxed) as f32 / 100.0;
-    let _ = tx.send(Event::Progress(task.id, stage, done, done));
+    // Neither engine reports progress, so the stage only ever goes 0 to 1.
+    let stage = command::subtitle_stages()[1];
+    let _ = tx.send(Event::Progress(task.id, stage, 1.0, 1.0));
     Ok(cues)
 }
 
@@ -486,6 +467,7 @@ mod tests {
     use super::*;
     use crate::sources::Probe;
     use crate::task::TaskKind;
+    use std::sync::Arc;
 
     fn task(target: usize, width: u32) -> Task {
         Task {

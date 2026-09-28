@@ -104,6 +104,8 @@ pub struct Note {
     pub locator: Option<String>,
     pub message: String,
     pub detail: Vec<String>,
+    /// Verbatim text from a tool or library, printed below our own wording.
+    pub cause: Option<String>,
 }
 
 pub fn note_lines(note: &Note) -> Vec<String> {
@@ -119,6 +121,9 @@ pub fn note_lines(note: &Note) -> Vec<String> {
     let mut lines = vec![format!("  {head}")];
     for line in &note.detail {
         lines.push(format!("    {}", dim(line)));
+    }
+    if let Some(cause) = &note.cause {
+        lines.push(format!("    {}", dim_gray(cause)));
     }
     lines
 }

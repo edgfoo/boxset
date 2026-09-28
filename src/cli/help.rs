@@ -9,7 +9,8 @@ struct Flag {
     name: &'static str,
     value: &'static str,
     default: &'static str,
-    note: &'static str,
+    /// The description, one entry per line.
+    note: &'static [&'static str],
 }
 
 struct Group {
@@ -21,7 +22,7 @@ const fn flag(
     name: &'static str,
     value: &'static str,
     default: &'static str,
-    note: &'static str,
+    note: &'static [&'static str],
 ) -> Flag {
     Flag {
         name,
@@ -39,15 +40,15 @@ const SINGLE_SHOT: &[Group] = &[
                 "--name",
                 "<name>",
                 "source filename",
-                "base name for outputs",
+                &["base name for outputs"],
             ),
-            flag("--out-dir", "<dir>", "./export", "output folder"),
-            flag("--jobs", "<n>", "2", "encodes in parallel"),
-            flag("--dry-run", "", "", "print the plan but output nothing"),
-            flag("-y, --yes", "", "", "skip confirmations"),
-            flag("--verbose", "", "", "show ffmpeg errors"),
-            flag("-h, --help", "", "", "show this doc"),
-            flag("-V, --version", "", "", ""),
+            flag("--out-dir", "<dir>", "./export", &["output folder"]),
+            flag("--jobs", "<n>", "2", &["encodes in parallel"]),
+            flag("--dry-run", "", "", &["print the plan but output nothing"]),
+            flag("-y, --yes", "", "", &["skip confirmations"]),
+            flag("--verbose", "", "", &["show ffmpeg errors"]),
+            flag("-h, --help", "", "", &["show this doc"]),
+            flag("-V, --version", "", "", &[""]),
         ],
     },
     Group {
@@ -57,40 +58,40 @@ const SINGLE_SHOT: &[Group] = &[
                 "--quality",
                 "<tier>",
                 "balanced",
-                "video quality: low, balanced, high, max",
+                &["video quality: low, balanced, high, max"],
             ),
             flag(
                 "--codecs",
                 "<list>",
                 "h264,vp9",
-                "transcode to: h264, h265, vp9, av1",
+                &["transcode to: h264, h265, vp9, av1"],
             ),
             flag(
                 "--widths",
                 "<list>",
                 "derived from source",
-                "output width(s) in pixels",
+                &["output width(s) in pixels"],
             ),
-            flag("--crop", "<w:h>", "none", "crop outputs to aspect ratio"),
+            flag("--crop", "<w:h>", "none", &["crop outputs to aspect ratio"]),
             flag(
                 "--crop-anchor",
                 "<where>",
                 "centre",
-                "centre, top, bottom, left, right",
+                &["centre, top, bottom, left, right"],
             ),
             flag(
                 "--trim",
                 "<start-end>",
                 "none",
-                "eg 0:05-0:30, either side omittable",
+                &["eg 0:05-0:30, either side omittable"],
             ),
             flag(
                 "--fps",
                 "<rate>",
                 "the source's",
-                "output frames per second",
+                &["output frames per second"],
             ),
-            flag("--no-audio", "", "", "drop the audio track"),
+            flag("--no-audio", "", "", &["drop the audio track"]),
         ],
     },
     Group {
@@ -100,33 +101,25 @@ const SINGLE_SHOT: &[Group] = &[
                 "--poster",
                 "[<at>]",
                 "first frame",
-                "timestamp of poster, eg. 0:04",
+                &["timestamp of poster, eg. 0:04"],
             ),
-            flag("--no-poster", "", "", ""),
+            flag("--no-poster", "", "", &[""]),
         ],
     },
     Group {
         heading: Some("Subtitles"),
         flags: &[
-            flag(
-                "--subs-lang",
-                "<code>",
-                "auto-detected",
-                "force transcription language",
-            ),
+            flag("--no-subs", "", "", &[""]),
             flag(
                 "--subs-model",
-                "<tier>",
-                "base",
-                "whispr model: base, small, medium, large",
+                "<model>",
+                "parakeet-0.6b",
+                &[
+                    "parakeet-110m, parakeet-0.6b,",
+                    "whisper-tiny, whisper-base, whisper-small,",
+                    "whisper-medium, whisper-large",
+                ],
             ),
-            flag(
-                "--subs-cue-len",
-                "<length>",
-                "short",
-                "cue length: short, medium, long",
-            ),
-            flag("--no-subs", "", "", ""),
         ],
     },
 ];
@@ -134,19 +127,19 @@ const SINGLE_SHOT: &[Group] = &[
 const BUILD: &[Group] = &[Group {
     heading: None,
     flags: &[
-        flag("--target", "<name>", "every target", "repeatable"),
+        flag("--target", "<name>", "every target", &["repeatable"]),
         flag(
             "-c, --config",
             "<path>",
             "boxset.toml",
-            "a file or its directory",
+            &["a file or its directory"],
         ),
-        flag("--out-dir", "<dir>", "./export", "or the config's out_dir"),
-        flag("--jobs", "<n>", "2", "or the config's jobs"),
-        flag("--dry-run", "", "", "print the plan, encode nothing"),
-        flag("-y, --yes", "", "", "skip the confirmation"),
-        flag("--verbose", "", "", "show ffmpeg's output on failure"),
-        flag("-h, --help", "", "", "this doc"),
+        flag("--out-dir", "<dir>", "./export", &["or the config's out_dir"]),
+        flag("--jobs", "<n>", "2", &["or the config's jobs"]),
+        flag("--dry-run", "", "", &["print the plan, encode nothing"]),
+        flag("-y, --yes", "", "", &["skip the confirmation"]),
+        flag("--verbose", "", "", &["show ffmpeg's output on failure"]),
+        flag("-h, --help", "", "", &["this doc"]),
     ],
 }];
 
@@ -278,13 +271,21 @@ fn print_groups(groups: &[Group]) {
                 true => flag.name.to_string(),
                 false => format!("{} {}", flag.name, dim(flag.value)),
             };
-            let line = format!(
-                "  {}{}{}",
-                pad(&name, name_width + PAD),
-                pad(&dim(flag.note), note_width + PAD),
-                dim(flag.default)
-            );
-            println!("{}", line.trim_end());
+            for (index, note) in flag.note.iter().enumerate() {
+                // The name and default sit on the first line; the rest of the
+                // description continues underneath it.
+                let (name, default) = match index {
+                    0 => (name.as_str(), flag.default),
+                    _ => ("", ""),
+                };
+                let line = format!(
+                    "  {}{}{}",
+                    pad(name, name_width + PAD),
+                    pad(&dim(note), note_width + PAD),
+                    dim(default)
+                );
+                println!("{}", line.trim_end());
+            }
         }
     }
 }
@@ -319,7 +320,8 @@ fn columns(groups: &[Group]) -> (usize, usize) {
         .unwrap_or(0);
 
     let note = rows()
-        .map(|flag| flag.note.chars().count())
+        .flat_map(|flag| flag.note.iter())
+        .map(|note| note.chars().count())
         .chain(["Description".len()])
         .max()
         .unwrap_or(0);

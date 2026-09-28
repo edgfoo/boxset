@@ -72,10 +72,7 @@ pub struct PosterSettings {
 
 #[derive(Debug, Clone)]
 pub struct SubtitleSettings {
-    pub language: Option<String>,
     pub model: TranscriptionModel,
-    /// `None` leaves cue length to the engine's own segmentation.
-    pub max_cue_chars: Option<u32>,
 }
 
 const RUNG_WIDTHS: [u32; 5] = [480, 640, 960, 1280, 1920];

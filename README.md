@@ -98,4 +98,4 @@ boxset is [MIT](./LICENSE-MIT) or [Apache-2.0](./LICENSE-APACHE).
 
 It runs ffmpeg as a subprocess but doesn't redistribute it. Installing via Homebrew pulls ffmpeg in as a dependency.
 
-Subtitles are transcribed by [whisper.cpp](https://github.com/ggml-org/whisper.cpp), which is MIT licensed and compiled into the binary.
+Subtitles are transcribed by [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp), which is MIT licensed and compiled into the binary.

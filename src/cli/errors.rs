@@ -48,6 +48,7 @@ pub fn problem_note(
         locator,
         message,
         detail,
+        cause: None,
     }
 }
 
@@ -136,6 +137,22 @@ pub fn task_note(error: &BoxsetError) -> Note {
         locator: None,
         message,
         detail,
+        cause: engine_cause(error),
+    }
+}
+
+/// What the transcription engine itself said. Our own wording can only say a
+/// model failed; this is the line that says why.
+fn engine_cause(error: &BoxsetError) -> Option<String> {
+    let BoxsetError::TranscribeFailed { source, .. } = error else {
+        return None;
+    };
+
+    match source {
+        TranscribeError::ModelLoad { detail, .. } | TranscribeError::Inference { detail, .. } => {
+            Some(detail.clone())
+        }
+        _ => None,
     }
 }
 
@@ -235,6 +252,7 @@ pub fn toml_note(path: &std::path::Path, text: &str, error: &toml::de::Error) ->
         locator: Some(locator),
         message: error.message().trim().to_string(),
         detail: Vec::new(),
+        cause: None,
     }
 }
 
@@ -264,18 +282,21 @@ pub fn fail_parse(error: &clap::Error) -> ! {
             locator: None,
             message: format!("boxset doesn't have a {flag} flag"),
             detail: vec!["Try: boxset help".to_string()],
+            cause: None,
         },
         (ErrorKind::InvalidValue, Some(value)) => Note {
             severity: Severity::Error,
             locator: None,
             message: format!("`{value}` isn't valid here"),
             detail: vec!["Try: boxset help".to_string()],
+            cause: None,
         },
         _ => Note {
             severity: Severity::Error,
             locator: None,
             message: clap_problem_line(error),
             detail: vec!["Try: boxset help".to_string()],
+            cause: None,
         },
     };
 

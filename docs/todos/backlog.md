@@ -9,26 +9,13 @@ boxset and ffmpeg versions — so the work is deciding staleness and acting on i
 An output is current when its entry matches _and_ the file is on disk: assets are
 often gitignored, so a manifest entry alone never means the file is there.
 
-## Prettier errors
-
-At the moment they just look like this:
-
-```
-work/interactive-london-buses (main{3}) % boxset videos/foo
-error: target 1: can't read videos/foo
-  There's no file at that path.
-Error: stopped: nothing was encoded
-```
-
-I'm not even sure what ffmpeg looks like. Let's make them pretty like atomkit's.
-
 ## Add post-run hints for improving output
 
 Show a hint block at the end of the build section that highlights things like...
 
-- large video files and how to compress them further (--quality low, etc)
+- large video files or low compression ratios: how to compress further (--quality low, etc)
 - for videos with no speech or mostly-silent audio, suggest --no-audio
-- ...
+- prompt people to review subtitles
 
 ## Add boxset config command
 
@@ -59,6 +46,34 @@ reintroduce it.
 Ctrl-c leaves passlogs behind. We need to trap exits and cleanup, or some
 kind of "finally" clause?
 
-## Untested
+A transcription in flight also runs to completion. `Session::set_cancel_token`
+takes a `CancelToken` that aborts between decode steps and returns the partial
+transcript.
 
-Whisper transcription and (once it exists) the TUI.
+## Golden subtitle fixtures
+
+transcribe-cpp is young (0.2.x, one vendor). Keep a few golden VTTs in `tests/`
+so an upstream regression shows up as a failing test rather than a worse
+transcript nobody notices.
+
+## Clear dead whisper.cpp model files
+
+Cached `ggml-*.bin` weights from the whisper-rs era are never read now. Anyone
+who ran an older boxset has up to 3.9GB of them in the cache directory.
+
+## Subtitle options we don't expose
+
+`WhisperRunOptions` exposes `initial_prompt` for proper nouns, temperature and
+the threshold knobs. `SessionOptions` has `n_threads`, which could come from
+`available_parallelism`. `Transcript.tokens` carries a per-token confidence,
+which would ground a "review these subtitles" post-run hint.
+
+## Get progress working for transcription
+
+## Add .md documentation
+
+We should cover...
+
+- getting started guide
+- transcriptions (models, managing them, etc)
+- config file

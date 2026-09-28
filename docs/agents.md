@@ -154,20 +154,16 @@ every pattern has a real captured fixture in `tests/fixtures/ffmpeg-stderr/`,
 never handwritten, since a handwritten sample tests the pattern against itself. A
 wrong classification is worse than none.
 
-**whisper-rs** (bindings to whisper.cpp) is compiled in — there is no external
-Whisper install and no Python anywhere in the path. Building it needs a current
-cmake. Built with the `metal` feature on macOS, plain CPU elsewhere.
+**transcribe-cpp** (bindings to transcribe.cpp) is compiled in — there is no
+external install and no Python anywhere in the path. Building it needs a current
+cmake. `metal` is a default feature, so non-macOS targets take the crate with
+`default-features = false`.
 
 **Transcription engines** sit behind `TranscriptionModel`, which names an engine
 and a size together so no pairing that doesn't exist can be written. Each engine
 is a module in `src/lib/transcribe/` owning its weights table as a `ModelSource`;
 `environment` fetches and verifies without knowing which engine it has. Adding
 one is a module, a variant, and two match arms.
-
-**Model weights** are fetched once into the OS cache directory and shared across
-projects, rather than embedded, to keep the download small and allow choosing a
-quality tier. One directory holds every engine's files, so filenames must be
-unique across engines.
 
 **Encoding changes need a quality measurement, not a file size.** The vp9 tiers
 looked wrong once — larger files than h264 at the same tier — but measuring with

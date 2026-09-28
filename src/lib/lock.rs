@@ -144,16 +144,12 @@ fn describe_work(work: &TaskWork) -> String {
             format!("poster width={width} at={} crop={crop}", at.0)
         }
         TaskWork::Subtitles {
-            language,
             model,
-            max_cue_chars,
             trim,
             extra_args,
         } => {
             let trim = describe_trim(*trim);
-            format!(
-                "subtitles language={language:?} model={model:?} cue_chars={max_cue_chars:?} trim={trim} extra={extra_args:?}"
-            )
+            format!("subtitles model={model:?} trim={trim} extra={extra_args:?}")
         }
     }
 }

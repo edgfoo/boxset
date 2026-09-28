@@ -176,9 +176,7 @@ impl Mergeable for PosterSettings {
 impl Mergeable for SubtitleSettings {
     fn merge(&self, defaults: &Self) -> Self {
         SubtitleSettings {
-            language: or_clone(&self.language, &defaults.language),
             model: self.model.or(defaults.model),
-            cue_length: self.cue_length.or(defaults.cue_length),
         }
     }
 }
@@ -291,60 +289,7 @@ pub struct PosterSettings {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SubtitleSettings {
-    pub language: Option<String>,
     pub model: Option<TranscriptionModel>,
-    pub cue_length: Option<CueLength>,
-}
-
-/// A target length for individual cues in the transcription.
-/// Either a preset (short, medium, long) or an exact number of targe tcharacters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CueLength {
-    Short,
-    Medium,
-    Long,
-    Chars(u32),
-}
-
-impl CueLength {
-    pub fn max_chars(self) -> Option<u32> {
-        match self {
-            CueLength::Short => Some(42),
-            CueLength::Medium => Some(84),
-            CueLength::Long => None,
-            CueLength::Chars(chars) => Some(chars),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for CueLength {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::{Error, Unexpected};
-
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Raw {
-            Name(String),
-            Chars(i64),
-        }
-
-        match Raw::deserialize(deserializer)? {
-            Raw::Name(name) => match name.as_str() {
-                "short" => Ok(CueLength::Short),
-                "medium" => Ok(CueLength::Medium),
-                "long" => Ok(CueLength::Long),
-                other => Err(D::Error::invalid_value(
-                    Unexpected::Str(other),
-                    &"\"short\", \"medium\", \"long\", or a character count",
-                )),
-            },
-            Raw::Chars(chars) if chars > 0 => Ok(CueLength::Chars(chars as u32)),
-            Raw::Chars(chars) => Err(D::Error::invalid_value(
-                Unexpected::Signed(chars),
-                &"a character count above zero",
-            )),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -357,18 +302,29 @@ pub enum WhisperTier {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParakeetTier {
+    /// English only, fast.
+    Fast,
+    /// 25 European languages.
+    Multilingual,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TranscriptionModel {
     Whisper(WhisperTier),
+    Parakeet(ParakeetTier),
 }
 
 impl TranscriptionModel {
     pub fn name(self) -> &'static str {
         match self {
-            TranscriptionModel::Whisper(WhisperTier::Tiny) => "tiny",
-            TranscriptionModel::Whisper(WhisperTier::Base) => "base",
-            TranscriptionModel::Whisper(WhisperTier::Small) => "small",
-            TranscriptionModel::Whisper(WhisperTier::Medium) => "medium",
-            TranscriptionModel::Whisper(WhisperTier::Large) => "large",
+            TranscriptionModel::Whisper(WhisperTier::Tiny) => "whisper-tiny",
+            TranscriptionModel::Whisper(WhisperTier::Base) => "whisper-base",
+            TranscriptionModel::Whisper(WhisperTier::Small) => "whisper-small",
+            TranscriptionModel::Whisper(WhisperTier::Medium) => "whisper-medium",
+            TranscriptionModel::Whisper(WhisperTier::Large) => "whisper-large",
+            TranscriptionModel::Parakeet(ParakeetTier::Fast) => "parakeet-110m",
+            TranscriptionModel::Parakeet(ParakeetTier::Multilingual) => "parakeet-0.6b",
         }
     }
 
@@ -377,12 +333,14 @@ impl TranscriptionModel {
     }
 }
 
-pub const ALL_MODELS: [TranscriptionModel; 5] = [
+pub const ALL_MODELS: [TranscriptionModel; 7] = [
     TranscriptionModel::Whisper(WhisperTier::Tiny),
     TranscriptionModel::Whisper(WhisperTier::Base),
     TranscriptionModel::Whisper(WhisperTier::Small),
     TranscriptionModel::Whisper(WhisperTier::Medium),
     TranscriptionModel::Whisper(WhisperTier::Large),
+    TranscriptionModel::Parakeet(ParakeetTier::Fast),
+    TranscriptionModel::Parakeet(ParakeetTier::Multilingual),
 ];
 
 impl std::fmt::Display for TranscriptionModel {
@@ -480,7 +438,7 @@ mod tests {
         let config = parse(
             r#"
             [defaults]
-            subtitles = { model = "small" }
+            subtitles = { model = "whisper-small" }
 
             [[target]]
             src = "a.mp4"

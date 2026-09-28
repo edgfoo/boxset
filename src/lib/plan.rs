@@ -139,9 +139,7 @@ fn plan_target(target: usize, settings: &Settings, probe: &Arc<Probe>) -> Vec<Ta
             TaskKind::Subtitles,
             outputs::subtitles_path(&naming),
             TaskWork::Subtitles {
-                language: subtitles.language.clone(),
                 model: subtitles.model,
-                max_cue_chars: subtitles.max_cue_chars,
                 trim: settings.trim,
                 extra_args: Vec::new(),
             },
@@ -231,9 +229,9 @@ mod tests {
             }),
             poster: Some(PosterSettings { at: None }),
             subtitles: Some(SubtitleSettings {
-                language: None,
-                model: crate::config::TranscriptionModel::Whisper(crate::config::WhisperTier::Base),
-                max_cue_chars: None,
+                model: crate::config::TranscriptionModel::Parakeet(
+                    crate::config::ParakeetTier::Multilingual,
+                ),
             }),
             h264: Default::default(),
             h265: Default::default(),

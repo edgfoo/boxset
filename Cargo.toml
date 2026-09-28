@@ -36,7 +36,8 @@ toml = "0.8"
 ureq = "3.4.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-whisper-rs = { version = "0.16", features = ["metal"] }
+transcribe-cpp = "0.2.4"
 
+# `metal` is a default feature of transcribe-cpp, so elsewhere defaults are off.
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-whisper-rs = "0.16"
+transcribe-cpp = { version = "0.2.4", default-features = false }

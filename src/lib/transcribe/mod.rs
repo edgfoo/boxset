@@ -1,12 +1,19 @@
 //! Turning a source's audio into a WebVTT track.
 
+mod cues;
+mod parakeet;
 mod whisper;
 
 use std::fmt::Write as _;
 use std::path::Path;
 
+use transcribe_cpp::{Model, RunOptions, TimestampKind};
+
 use crate::config::TranscriptionModel;
 use crate::error::TranscribeError;
+
+const QUANT: &str = "Q5_K_M";
+const BASE_URL: &str = "https://huggingface.co/handy-computer";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cue {
@@ -17,40 +24,68 @@ pub struct Cue {
 
 pub struct ModelSource {
     /// Cache filename, unique across engines
-    pub file_name: &'static str,
+    pub file_name: String,
     pub url: String,
     pub sha256: &'static str,
     /// Only tells the user how large the download will be. Not necessarily accurate.
     pub size_bytes: u64,
 }
 
+impl ModelSource {
+    /// A GGUF in `handy-computer/<repo>-gguf`, named `<repo>-<QUANT>.gguf`
+    fn quantized(repo: &str, sha256: &'static str, size_bytes: u64) -> ModelSource {
+        let file_name = format!("{repo}-{QUANT}.gguf");
+        ModelSource {
+            url: format!("{BASE_URL}/{repo}-gguf/resolve/main/{file_name}"),
+            file_name,
+            sha256,
+            size_bytes,
+        }
+    }
+}
+
 pub fn model_source(model: TranscriptionModel) -> ModelSource {
     match model {
         TranscriptionModel::Whisper(tier) => whisper::model_source(tier),
+        TranscriptionModel::Parakeet(tier) => parakeet::model_source(tier),
     }
 }
 
 /// Transcribes 16kHz mono PCM with the cached model at `model_path`.
-/// `language` is a language hint, `None` auto-detects.
-/// `max_cue_chars` caps how long a cue may run.
+/// The spoken language is detected by the model.
 pub fn transcribe(
     model: TranscriptionModel,
     model_path: &Path,
     samples: &[f32],
-    language: Option<&str>,
-    max_cue_chars: Option<u32>,
-    on_progress: impl FnMut(f32) + 'static,
 ) -> Result<Vec<Cue>, TranscribeError> {
-    match model {
-        TranscriptionModel::Whisper(tier) => whisper::transcribe(
-            tier,
-            model_path,
-            samples,
-            language,
-            max_cue_chars,
-            on_progress,
-        ),
-    }
+    // The native library logs to stderr unless told otherwise, which would
+    // scribble over the live display.
+    transcribe_cpp::disable_logging();
+
+    let loaded = Model::load(model_path).map_err(|e| TranscribeError::ModelLoad {
+        model,
+        path: model_path.to_path_buf(),
+        detail: e.to_string(),
+    })?;
+
+    let mut session = loaded.session().map_err(|e| TranscribeError::Inference {
+        model,
+        detail: e.to_string(),
+    })?;
+
+    let options = RunOptions {
+        timestamps: TimestampKind::Auto,
+        ..RunOptions::default()
+    };
+
+    let transcript = session
+        .run(samples, &options)
+        .map_err(|e| TranscribeError::Inference {
+            model,
+            detail: e.to_string(),
+        })?;
+
+    Ok(cues::from_transcript(&transcript))
 }
 
 pub fn to_webvtt(cues: &[Cue]) -> String {
