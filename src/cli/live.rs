@@ -5,21 +5,21 @@
 //! terminal to redraw in, nothing is printed until a group is done.
 
 use std::io::Write;
-use std::time::Duration;
 
 use boxset::config::{Codec, TranscriptionModel};
 use boxset::environment::Requirement;
 use boxset::error::BoxsetError;
+use boxset::hints::{Hint, Hints};
 use boxset::plan::Plan;
 use boxset::report::{Reporter, TaskOutcome, TaskReport};
-use boxset::task::{TaskId, TaskKind};
+use boxset::task::TaskId;
 
 use super::errors::task_note;
 use super::style::{
-    bold, bold_green, dim, dim_subtitles_icon, gray, icon, interactive, note_lines, pad, red,
+    aside, bold_green, dim, dim_subtitles_icon, gray, icon, interactive, note_lines, pad, red,
     visible_len,
 };
-use super::units::{directory, elapsed, filename, plural, size};
+use super::units::{elapsed, filename, size};
 
 const CURSOR_UP: &str = "\x1b[A";
 const CLEAR_LINE: &str = "\x1b[2K";
@@ -75,6 +75,9 @@ pub struct LiveReporter {
     next_to_commit: usize,
     /// Lines currently drawn at the bottom of the screen.
     drawn: usize,
+    /// Advice for better results or usage based on completed outputs.
+    hints: Hints,
+    hints_committed: bool,
 }
 
 impl LiveReporter {
@@ -131,6 +134,8 @@ impl LiveReporter {
             name_width,
             next_to_commit: 0,
             drawn: 0,
+            hints: Hints::new(),
+            hints_committed: false,
         }
     }
 
@@ -181,6 +186,24 @@ impl LiveReporter {
         self.redraw();
     }
 
+    /// Leaves the pinned hints in the output, above the recap.
+    pub fn commit_hints(&mut self, failed: usize) {
+        if self.hints_committed {
+            return;
+        }
+
+        self.erase();
+        self.hints_committed = true;
+
+        if failed > 0 {
+            return;
+        }
+
+        for line in hint_block(&self.hints) {
+            println!("{line}");
+        }
+    }
+
     /// Draws each started-but-unfinished group at the bottom of the screen.
     /// The live region grows with `jobs` rather than with the plan, since
     /// only the groups actually in flight are drawn.
@@ -201,6 +224,10 @@ impl LiveReporter {
                 }
                 lines.extend(self.render(index, true));
             }
+        }
+
+        if !self.hints_committed {
+            lines.extend(hint_block(&self.hints));
         }
 
         for line in &lines {
@@ -403,6 +430,10 @@ impl Reporter for LiveReporter {
             return;
         };
 
+        if matches!(report.outcome, TaskOutcome::Succeeded) {
+            self.hints.observe_completed_output(task.kind);
+        }
+
         let row = &mut self.groups[group].rows[row];
 
         row.result = Some(report);
@@ -413,72 +444,20 @@ impl Reporter for LiveReporter {
     }
 }
 
-/// `12 videos, 6 posters, 6 VTTs`, dropping any kind the run produced none of.
-fn counts_by_kind(plan: &Plan, produced: &[TaskId]) -> Vec<String> {
-    let count = |matches: fn(TaskKind) -> bool| {
-        plan.tasks
-            .iter()
-            .filter(|task| produced.contains(&task.id) && matches(task.id.kind))
-            .count()
-    };
-
-    [
-        (count(|k| matches!(k, TaskKind::Rendition { .. })), "video"),
-        (count(|k| matches!(k, TaskKind::Poster { .. })), "poster"),
-        (count(|k| matches!(k, TaskKind::Subtitles)), "VTT"),
-    ]
-    .into_iter()
-    .filter(|(n, _)| *n > 0)
-    .map(|(n, word)| format!("{} {}", bold(&n.to_string()), plural(n, word)))
-    .collect()
-}
-
-pub fn closing_lines(
-    plan: &Plan,
-    produced: &[TaskId],
-    failed: usize,
-    bytes: u64,
-    wall: Duration,
-    out_dir: &std::path::Path,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    let made = counts_by_kind(plan, produced);
-    if !made.is_empty() {
-        lines.push(format!(
-            "  {} created in {}.",
-            made.join(", "),
-            bold(&elapsed(wall)),
-        ));
-        lines.push(format!("  {} in total.", bold(&size(Some(bytes)))));
+fn hint_block(hints: &Hints) -> Vec<String> {
+    if hints.is_empty() {
+        return Vec::new();
     }
 
-    if failed > 0 {
-        if !lines.is_empty() {
-            lines.push(String::new());
-        }
-        lines.push(format!(
-            "  {} {} {} failed.",
-            red("✗"),
-            bold(&failed.to_string()),
-            plural(failed, "output"),
-        ));
+    let mut lines = vec![String::new()];
+    for hint in hints.as_slice() {
+        lines.push(match hint {
+            Hint::ReviewSubtitles => {
+                aside("Transcription models can make mistakes — review your subtitle files.")
+            }
+        });
     }
-
-    if !made.is_empty() {
-        lines.push(String::new());
-        lines.push(format!("  Find them in {}.", bold(&directory(out_dir))));
-    }
-
     lines
-}
-
-/// The closing section's name, chosen by whether anything failed.
-pub fn closing_section(failed: usize) -> &'static str {
-    match failed {
-        0 => "That's a wrap",
-        _ => "Cut",
-    }
 }
 
 pub fn codec_name(codec: Codec) -> &'static str {

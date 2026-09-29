@@ -10,6 +10,8 @@ pub mod environment;
 pub mod error;
 #[path = "lib/execute.rs"]
 pub mod execute;
+#[path = "lib/hints.rs"]
+pub mod hints;
 #[path = "lib/lock.rs"]
 pub mod lock;
 #[path = "lib/outputs.rs"]
@@ -37,6 +39,7 @@ pub use config::TargetConfig;
 pub use environment::{Requirement, check_environment, ensure_available, ensure_met};
 pub use error::BoxsetError;
 pub use execute::execute;
+pub use hints::{Hint, Hints};
 pub use lock::{LockEntry, Lockfile};
 pub use plan::{Plan, Selection, plan};
 pub use problem::{Problem, ProblemKind, Severity};

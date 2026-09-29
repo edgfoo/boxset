@@ -6,6 +6,7 @@ mod flags;
 mod help;
 mod live;
 mod plan;
+mod recap;
 mod style;
 mod units;
 
@@ -300,8 +301,10 @@ fn run(
     let wall = started.elapsed();
     let bytes = written_bytes(&plan, &outcome);
 
-    style::section(live::closing_section(outcome.failed));
-    for line in live::closing_lines(
+    reporter.commit_hints(outcome.failed);
+
+    style::section(recap::recap_section(outcome.failed));
+    for line in recap::recap_lines(
         &plan,
         &outcome.produced,
         outcome.failed,

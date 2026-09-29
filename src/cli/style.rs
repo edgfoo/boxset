@@ -10,6 +10,7 @@ const SUBTITLES: &str = "┅";
 const SECTION: &str = "◆";
 const WARNING: &str = "▲";
 const ERROR: &str = "█";
+const RULE: &str = "│";
 
 const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
@@ -191,4 +192,8 @@ pub fn icon(kind: TaskKind) -> String {
 /// rather than an output of its own.
 pub fn dim_subtitles_icon() -> String {
     wrap(DIM_CYAN, SUBTITLES)
+}
+
+pub fn aside(text: &str) -> String {
+    format!("  {} {}", dim(RULE), dim(text))
 }

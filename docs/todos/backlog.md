@@ -15,7 +15,7 @@ Show a hint block at the end of the build section that highlights things like...
 
 - large video files or low compression ratios: how to compress further (--quality low, etc)
 - for videos with no speech or mostly-silent audio, suggest --no-audio
-- prompt people to review subtitles
+- prompt people to review subtitles ✅
 
 ## Add boxset config command
 
@@ -49,24 +49,6 @@ kind of "finally" clause?
 A transcription in flight also runs to completion. `Session::set_cancel_token`
 takes a `CancelToken` that aborts between decode steps and returns the partial
 transcript.
-
-## Golden subtitle fixtures
-
-transcribe-cpp is young (0.2.x, one vendor). Keep a few golden VTTs in `tests/`
-so an upstream regression shows up as a failing test rather than a worse
-transcript nobody notices.
-
-## Clear dead whisper.cpp model files
-
-Cached `ggml-*.bin` weights from the whisper-rs era are never read now. Anyone
-who ran an older boxset has up to 3.9GB of them in the cache directory.
-
-## Subtitle options we don't expose
-
-`WhisperRunOptions` exposes `initial_prompt` for proper nouns, temperature and
-the threshold knobs. `SessionOptions` has `n_threads`, which could come from
-`available_parallelism`. `Transcript.tokens` carries a per-token confidence,
-which would ground a "review these subtitles" post-run hint.
 
 ## Get progress working for transcription
 
