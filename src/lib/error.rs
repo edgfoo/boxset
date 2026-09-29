@@ -39,6 +39,14 @@ pub enum BoxsetError {
         #[source]
         source: TranscribeError,
     },
+    #[error("cancelled")]
+    Cancelled { task: TaskId },
+}
+
+impl BoxsetError {
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, BoxsetError::Cancelled { .. })
+    }
 }
 
 #[derive(Debug, Error)]
@@ -59,6 +67,8 @@ pub enum TranscribeError {
     AudioExtract(#[source] FfmpegError),
     #[error("the source has no audio track to transcribe")]
     NoAudioTrack,
+    #[error("transcription was cancelled")]
+    Cancelled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -21,6 +21,7 @@ pub enum Phase {
 pub enum TaskOutcome {
     Succeeded,
     Failed(BoxsetError),
+    Cancelled,
 }
 
 #[derive(Debug)]

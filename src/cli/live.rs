@@ -5,6 +5,7 @@
 //! terminal to redraw in, nothing is printed until a group is done.
 
 use std::io::Write;
+use std::time::Duration;
 
 use boxset::config::{Codec, TranscriptionModel};
 use boxset::environment::Requirement;
@@ -186,6 +187,29 @@ impl LiveReporter {
         self.redraw();
     }
 
+    /// Commits the groups a cancelled run left in flight, which otherwise stay
+    /// uncommitted forever: their remaining tasks never report finishing.
+    pub fn commit_stopped(&mut self) {
+        self.erase();
+
+        for group in self.groups.iter_mut().skip(self.next_to_commit) {
+            if !group.started() {
+                continue;
+            }
+
+            for row in group.rows.iter_mut().filter(|row| row.result.is_none()) {
+                row.result = Some(TaskReport {
+                    outcome: TaskOutcome::Cancelled,
+                    elapsed: Duration::ZERO,
+                    bytes: None,
+                });
+            }
+            group.remaining = 0;
+        }
+
+        self.advance();
+    }
+
     /// Leaves the pinned hints in the output, above the recap.
     pub fn commit_hints(&mut self, failed: usize) {
         if self.hints_committed {
@@ -303,6 +327,13 @@ impl LiveReporter {
                     row.name,
                     red("✗"),
                     dim("failed"),
+                )),
+                TaskOutcome::Cancelled => lines.push(format!(
+                    "  {} {:<width$}    {} {}",
+                    row.icon,
+                    row.name,
+                    dim("−"),
+                    dim("stopped"),
                 )),
             }
         }

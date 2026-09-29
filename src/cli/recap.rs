@@ -28,10 +28,12 @@ fn counts_by_kind(plan: &Plan, produced: &[TaskId]) -> Vec<String> {
     .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn recap_lines(
     plan: &Plan,
     produced: &[TaskId],
     failed: usize,
+    stopped: bool,
     bytes: u64,
     wall: Duration,
     out_dir: &std::path::Path,
@@ -46,6 +48,19 @@ pub fn recap_lines(
             bold(&elapsed(wall)),
         ));
         lines.push(format!("  {} in total.", bold(&size(Some(bytes)))));
+    }
+
+    if stopped {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        let outstanding = plan.tasks.len() - produced.len() - failed;
+        lines.push(format!(
+            "  Stopped with {} of {} {} unbuilt.",
+            bold(&outstanding.to_string()),
+            plan.tasks.len(),
+            plural(plan.tasks.len(), "output"),
+        ));
     }
 
     if failed > 0 {
@@ -68,9 +83,9 @@ pub fn recap_lines(
     lines
 }
 
-pub fn recap_section(failed: usize) -> &'static str {
-    match failed {
-        0 => "That's a wrap",
-        _ => "Cut",
+pub fn recap_section(failed: usize, interrupted: bool) -> &'static str {
+    if failed > 0 || interrupted {
+        return "Cut";
     }
+    "That's a wrap"
 }

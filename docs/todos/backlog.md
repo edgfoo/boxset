@@ -41,15 +41,6 @@ URLs. Nothing checks it's URL-safe. This came up on a real project where a sourc
 stem containing a space was reaching the web; `name` fixed that case but can
 reintroduce it.
 
-## Cleanup after ctrl-c
-
-Ctrl-c leaves passlogs behind. We need to trap exits and cleanup, or some
-kind of "finally" clause?
-
-A transcription in flight also runs to completion. `Session::set_cancel_token`
-takes a `CancelToken` that aborts between decode steps and returns the partial
-transcript.
-
 ## Get progress working for transcription
 
 ## Add .md documentation

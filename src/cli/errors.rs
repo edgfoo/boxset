@@ -230,9 +230,14 @@ fn error_wording(error: &BoxsetError) -> (String, Vec<String>) {
                 TranscribeError::Inference { model, .. } => {
                     vec![format!("The {model} model failed while transcribing.")]
                 }
+                TranscribeError::Cancelled => vec!["Transcription was stopped.".to_string()],
             };
             ("boxset couldn't make subtitles".to_string(), detail)
         }
+        BoxsetError::Cancelled { .. } => (
+            "boxset stopped before finishing".to_string(),
+            vec!["The run was interrupted.".to_string()],
+        ),
     }
 }
 

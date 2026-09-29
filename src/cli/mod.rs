@@ -287,6 +287,7 @@ fn run(
         return Ok(());
     }
 
+    let cancel = install_interrupt_handler();
     let mut reporter = LiveReporter::new(&plan, &requirements, settings.verbose);
 
     style::section("Building");
@@ -297,17 +298,22 @@ fn run(
     let source_hashes = hash_sources(&plan);
 
     let started = std::time::Instant::now();
-    let outcome = boxset::execute(&plan, &mut reporter, settings.jobs);
+    let outcome = boxset::execute(&plan, &mut reporter, settings.jobs, &cancel);
     let wall = started.elapsed();
     let bytes = written_bytes(&plan, &outcome);
+    let interrupted = cancel.is_cancelled();
 
+    if interrupted {
+        reporter.commit_stopped();
+    }
     reporter.commit_hints(outcome.failed);
 
-    style::section(recap::recap_section(outcome.failed));
+    style::section(recap::recap_section(outcome.failed, interrupted));
     for line in recap::recap_lines(
         &plan,
         &outcome.produced,
         outcome.failed,
+        interrupted,
         bytes,
         wall,
         &settings.out_dir,
@@ -327,7 +333,29 @@ fn run(
     if outcome.failed > 0 {
         std::process::exit(1);
     }
+    // 128 + SIGINT, standard interrupted exit code
+    if interrupted {
+        std::process::exit(130);
+    }
     Ok(())
+}
+
+/// Sets the run's cancellation flag on ctrl-C, SIGTERM or SIGHUP. Execution
+/// stops at the next check, prompting cleanup tasks.
+fn install_interrupt_handler() -> boxset::Cancel {
+    let cancel = boxset::Cancel::new();
+    let handler_cancel = cancel.clone();
+
+    let _ = ctrlc::set_handler(move || {
+        // A second ctrl-C quits immediately, leaving temp files behind. Someone
+        // pressing it twice wants out now.
+        if handler_cancel.is_cancelled() {
+            std::process::exit(130);
+        }
+        handler_cancel.cancel();
+    });
+
+    cancel
 }
 
 /// Whether to go ahead. Nothing to answer the prompt outside a terminal, so

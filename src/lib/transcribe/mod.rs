@@ -6,9 +6,12 @@ mod whisper;
 
 use std::fmt::Write as _;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
-use transcribe_cpp::{Model, RunOptions, TimestampKind};
+use transcribe_cpp::{CancelToken, Feature, Model, RunOptions, TimestampKind};
 
+use crate::cancel::Cancel;
 use crate::config::TranscriptionModel;
 use crate::error::TranscribeError;
 
@@ -57,6 +60,7 @@ pub fn transcribe(
     model: TranscriptionModel,
     model_path: &Path,
     samples: &[f32],
+    cancel: &Cancel,
 ) -> Result<Vec<Cue>, TranscribeError> {
     // The native library logs to stderr unless told otherwise, which would
     // scribble over the live display.
@@ -78,14 +82,47 @@ pub fn transcribe(
         ..RunOptions::default()
     };
 
-    let transcript = session
-        .run(samples, &options)
-        .map_err(|e| TranscribeError::Inference {
-            model,
-            detail: e.to_string(),
-        })?;
+    // A model that doesn't honour the abort callback has to finish its run
+    // before cancellation is noticed.
+    let token = CancelToken::new();
+    if loaded.supports(Feature::Cancellation) {
+        session.set_cancel_token(&token);
+    }
+
+    let finished = AtomicBool::new(false);
+
+    let transcript = std::thread::scope(|scope| {
+        let watcher = &finished;
+        let token = &token;
+        scope.spawn(move || watch_for_cancellation(cancel, token, watcher));
+
+        let transcript = session.run(samples, &options);
+        finished.store(true, Ordering::SeqCst);
+        transcript
+    });
+
+    if cancel.is_cancelled() {
+        return Err(TranscribeError::Cancelled);
+    }
+
+    let transcript = transcript.map_err(|e| TranscribeError::Inference {
+        model,
+        detail: e.to_string(),
+    })?;
 
     Ok(cues::from_transcript(&transcript))
+}
+
+/// Polls until cancelled or until `done` is set, telling the native run to
+/// abort. It checks between decode steps, so a long run stops part-way.
+fn watch_for_cancellation(cancel: &Cancel, token: &CancelToken, done: &AtomicBool) {
+    while !done.load(Ordering::SeqCst) {
+        if cancel.is_cancelled() {
+            token.cancel();
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 pub fn to_webvtt(cues: &[Cue]) -> String {
