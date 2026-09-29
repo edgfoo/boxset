@@ -424,7 +424,14 @@ fn render_command(ffmpeg: &Path, args: &[String], trailing: &[&str]) -> String {
         .join(" ")
 }
 
-const PROGRESS_ARGS: [&str; 3] = ["-progress", "pipe:1", "-nostats"];
+const PROGRESS_ARGS: [&str; 5] = [
+    "-progress",
+    "pipe:1",
+    "-nostats",
+    // Report progress every 200ms vs the default 500ms
+    "-stats_period",
+    "0.2",
+];
 
 /// SIGKILL, because ffmpeg traps SIGINT and SIGTERM. On those it spends a few
 /// hundred milliseconds finishing the output file it was told to abandon.

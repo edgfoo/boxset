@@ -56,9 +56,9 @@ pub fn recap_lines(
         }
         let outstanding = plan.tasks.len() - produced.len() - failed;
         lines.push(format!(
-            "  Stopped with {} of {} {} unbuilt.",
+            "  Stopped with {} of {} {} left to build.",
             bold(&outstanding.to_string()),
-            plan.tasks.len(),
+            bold(&plan.tasks.len().to_string()),
             plural(plan.tasks.len(), "output"),
         ));
     }
