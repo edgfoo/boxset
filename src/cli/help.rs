@@ -1,169 +1,204 @@
-//! The only place flags are documented. The tests check this file against the
-//! flags the parser accepts, both ways.
+//! `boxset help` output
+
+use boxset::fields::{self, HelpGroup, Shape};
 
 use super::style::{dim, dim_gray, pad, section};
 
-const PAD: usize = 3;
+const COLUMN_GAP: usize = 3;
 
-struct Flag {
-    name: &'static str,
-    value: &'static str,
-    default: &'static str,
-    /// The description, one entry per line.
-    note: &'static [&'static str],
+struct HelpRow {
+    name: String,
+    value_name: &'static str,
+    default_note: &'static str,
+    /// One entry per printed line.
+    description: Vec<String>,
 }
 
 struct Group {
     heading: Option<&'static str>,
-    flags: &'static [Flag],
+    rows: Vec<HelpRow>,
 }
 
 const fn flag(
     name: &'static str,
-    value: &'static str,
-    default: &'static str,
-    note: &'static [&'static str],
-) -> Flag {
-    Flag {
+    value_name: &'static str,
+    default_note: &'static str,
+    description: &'static str,
+) -> CommandFlag {
+    CommandFlag {
         name,
-        value,
-        default,
-        note,
+        value_name,
+        default_note,
+        description,
     }
 }
 
-const SINGLE_SHOT: &[Group] = &[
-    Group {
-        heading: Some("General"),
-        flags: &[
-            flag(
-                "--name",
-                "<name>",
-                "source filename",
-                &["base name for outputs"],
-            ),
-            flag("--out-dir", "<dir>", "./export", &["output folder"]),
-            flag("--jobs", "<n>", "2", &["encodes in parallel"]),
-            flag("--dry-run", "", "", &["print the plan but output nothing"]),
-            flag("-y, --yes", "", "", &["skip confirmations"]),
-            flag("--verbose", "", "", &["show ffmpeg errors"]),
-            flag("-h, --help", "", "", &["show this doc"]),
-            flag("-V, --version", "", "", &[""]),
-        ],
-    },
-    Group {
-        heading: Some("Video"),
-        flags: &[
-            flag(
-                "--quality",
-                "<tier>",
-                "balanced",
-                &["video quality: low, balanced, high, max"],
-            ),
-            flag(
-                "--codecs",
-                "<list>",
-                "h264,vp9",
-                &["transcode to: h264, h265, vp9, av1"],
-            ),
-            flag(
-                "--widths",
-                "<list>",
-                "derived from source",
-                &["output width(s) in pixels"],
-            ),
-            flag("--crop", "<w:h>", "none", &["crop outputs to aspect ratio"]),
-            flag(
-                "--crop-anchor",
-                "<where>",
-                "centre",
-                &["centre, top, bottom, left, right"],
-            ),
-            flag(
-                "--trim",
-                "<start-end>",
-                "none",
-                &["eg 0:05-0:30, either side omittable"],
-            ),
-            flag(
-                "--fps",
-                "<rate>",
-                "the source's",
-                &["output frames per second"],
-            ),
-            flag("--no-audio", "", "", &["drop the audio track"]),
-        ],
-    },
-    Group {
-        heading: Some("Poster"),
-        flags: &[
-            flag(
-                "--poster",
-                "[<at>]",
-                "first frame",
-                &["timestamp of poster, eg. 0:04"],
-            ),
-            flag("--no-poster", "", "", &[""]),
-        ],
-    },
-    Group {
-        heading: Some("Subtitles"),
-        flags: &[
-            flag("--no-subs", "", "", &[""]),
-            flag(
-                "--subs-model",
-                "<model>",
-                "parakeet-0.6b",
-                &[
-                    "parakeet-110m, parakeet-0.6b,",
-                    "whisper-tiny, whisper-base, whisper-small,",
-                    "whisper-medium, whisper-large",
-                ],
-            ),
-        ],
-    },
+struct CommandFlag {
+    name: &'static str,
+    value_name: &'static str,
+    default_note: &'static str,
+    description: &'static str,
+}
+
+impl CommandFlag {
+    fn to_row(&self) -> HelpRow {
+        HelpRow {
+            name: self.name.to_string(),
+            value_name: self.value_name,
+            default_note: self.default_note,
+            description: match self.description.is_empty() {
+                true => vec![String::new()],
+                false => vec![self.description.to_string()],
+            },
+        }
+    }
+}
+
+const GENERAL_COMMAND_FLAGS: &[CommandFlag] = &[
+    flag("--dry-run", "", "", "print the plan but output nothing"),
+    flag("-y, --yes", "", "", "skip confirmations"),
+    flag("--verbose", "", "", "show ffmpeg errors"),
+    flag("-h, --help", "", "", "show this doc"),
+    flag("-V, --version", "", "", ""),
 ];
 
-const BUILD: &[Group] = &[Group {
-    heading: None,
-    flags: &[
-        flag("--target", "<name>", "every target", &["repeatable"]),
-        flag(
-            "-c, --config",
-            "<path>",
-            "boxset.toml",
-            &["a file or its directory"],
-        ),
-        flag("--out-dir", "<dir>", "./export", &["or the config's out_dir"]),
-        flag("--jobs", "<n>", "2", &["or the config's jobs"]),
-        flag("--dry-run", "", "", &["print the plan, encode nothing"]),
-        flag("-y, --yes", "", "", &["skip the confirmation"]),
-        flag("--verbose", "", "", &["show ffmpeg's output on failure"]),
-        flag("-h, --help", "", "", &["this doc"]),
-    ],
-}];
-
-const ENCODER_FLAGS: &[&[&str]] = &[
-    &[
-        "--h264-crf",
-        "--h264-preset",
-        "--h264-profile",
-        "--h264-extra-args",
-    ],
-    &[
-        "--h265-crf",
-        "--h265-preset",
-        "--h265-profile",
-        "--h265-extra-args",
-    ],
-    &[
-        "--vp9-crf",
-        "--vp9-cpu-used",
-        "--vp9-row-mt",
-        "--vp9-extra-args",
-    ],
-    &["--av1-crf", "--av1-preset", "--av1-extra-args"],
+const BUILD_COMMAND_FLAGS: &[CommandFlag] = &[
+    flag("--target", "<name>", "every target", "repeatable"),
+    flag(
+        "-c, --config",
+        "<path>",
+        "boxset.toml",
+        "a file or its directory",
+    ),
+    flag("--out-dir", "<dir>", "./export", "or the config's out_dir"),
+    flag("--jobs", "<n>", "2", "or the config's jobs"),
+    flag("--dry-run", "", "", "print the plan, encode nothing"),
+    flag("-y, --yes", "", "", "skip the confirmation"),
+    flag("--verbose", "", "", "show ffmpeg's output on failure"),
+    flag("-h, --help", "", "", "this doc"),
 ];
+
+/// A field becomes a help row only if it has a flag
+fn rows_in_group(group: HelpGroup) -> Vec<HelpRow> {
+    fields::TOP_LEVEL_FIELDS
+        .iter()
+        .chain(fields::TARGET_FIELDS)
+        .flat_map(rows_for_field)
+        .filter(|(field_group, _)| *field_group == group)
+        .map(|(_, row)| row)
+        .collect()
+}
+
+/// One field can document two flags: `poster` carries `--no-poster` and its
+/// `at` sub-field carries `--poster`.
+fn rows_for_field(field: &'static fields::Field) -> Vec<(HelpGroup, HelpRow)> {
+    let mut rows = Vec::new();
+
+    if let Some(name) = field.flag {
+        rows.push((
+            field.group,
+            HelpRow {
+                name: name.to_string(),
+                value_name: field.value_name,
+                default_note: field.default_note,
+                description: vec![field.help_note.to_string()],
+            },
+        ));
+    }
+
+    if let Shape::Table(inner) | Shape::Toggle(inner) = field.shape {
+        for sub in inner {
+            let Some(name) = sub.flag else {
+                continue;
+            };
+            rows.push((
+                sub.group,
+                HelpRow {
+                    name: name.to_string(),
+                    value_name: sub.value_name,
+                    default_note: sub.default_note,
+                    description: description_lines(sub),
+                },
+            ));
+        }
+    }
+
+    rows
+}
+
+const CHOICES_PER_LINE: usize = 3;
+const WRAP_ABOVE_CHOICES: usize = 5;
+
+fn description_lines(field: &'static fields::Field) -> Vec<String> {
+    match field.shape {
+        Shape::Choice(options) if options.len() > WRAP_ABOVE_CHOICES => {
+            comma_separated_lines(options, CHOICES_PER_LINE)
+        }
+        _ => vec![field.help_note.to_string()],
+    }
+}
+
+fn comma_separated_lines(items: &[&str], per_line: usize) -> Vec<String> {
+    let mut lines: Vec<String> = items
+        .chunks(per_line)
+        .map(|chunk| format!("{},", chunk.join(", ")))
+        .collect();
+
+    if let Some(last) = lines.last_mut() {
+        last.pop();
+    }
+
+    lines
+}
+
+fn single_shot_groups() -> Vec<Group> {
+    let mut general = rows_in_group(HelpGroup::General);
+    general.extend(GENERAL_COMMAND_FLAGS.iter().map(CommandFlag::to_row));
+
+    vec![
+        Group {
+            heading: Some("General"),
+            rows: general,
+        },
+        Group {
+            heading: Some("Video"),
+            rows: rows_in_group(HelpGroup::Video),
+        },
+        Group {
+            heading: Some("Poster"),
+            rows: rows_in_group(HelpGroup::Poster),
+        },
+        Group {
+            heading: Some("Subtitles"),
+            rows: rows_in_group(HelpGroup::Subtitles),
+        },
+    ]
+}
+
+fn build_groups() -> Vec<Group> {
+    vec![Group {
+        heading: None,
+        rows: BUILD_COMMAND_FLAGS
+            .iter()
+            .map(CommandFlag::to_row)
+            .collect(),
+    }]
+}
+
+fn flags_by_codec() -> Vec<Vec<String>> {
+    fields::TARGET_FIELDS
+        .iter()
+        .filter_map(|field| match field.shape {
+            Shape::CodecTable(inner) => Some(
+                inner
+                    .iter()
+                    .map(|sub| fields::codec_flag(field.toml_key, sub.toml_key))
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .collect()
+}
 
 const RECIPES: &[(&str, &str)] = &[
     (
@@ -190,7 +225,7 @@ const COMMANDS: &[(&str, &str)] = &[
 
 const HELP_HINT: (&str, &str) = ("boxset --help", "options and recipes");
 
-/// The command column, wide enough for every command printed in it.
+/// The command column, wide enough for every command printed in it
 fn command_width() -> usize {
     COMMANDS
         .iter()
@@ -198,7 +233,7 @@ fn command_width() -> usize {
         .map(|(command, _)| command.chars().count())
         .max()
         .unwrap_or(0)
-        + PAD
+        + COLUMN_GAP
 }
 
 pub fn print_summary() {
@@ -224,7 +259,7 @@ pub fn print_help() {
     }
 
     section("Options");
-    print_groups(SINGLE_SHOT);
+    print_groups(&single_shot_groups());
 
     println!();
     println!("  {}", dim("Per-codec ffmpeg overrides"));
@@ -236,7 +271,7 @@ pub fn print_build_help() {
     section("boxset build");
     println!("  Prepare videos according to boxset.toml config.");
     println!();
-    print_groups(BUILD);
+    print_groups(&build_groups());
     println!();
     println!("  {}", dim("Target settings live in boxset.toml."));
     println!();
@@ -252,12 +287,12 @@ fn print_intro() {
 }
 
 fn print_groups(groups: &[Group]) {
-    let (name_width, note_width) = columns(groups);
+    let (name_width, description_width) = column_widths(groups);
 
     println!(
         "  {}{}{}",
-        pad(&dim_gray("Setting"), name_width + PAD),
-        pad(&dim_gray("Description"), note_width + PAD),
+        pad(&dim_gray("Setting"), name_width + COLUMN_GAP),
+        pad(&dim_gray("Description"), description_width + COLUMN_GAP),
         dim_gray("Default")
     );
 
@@ -266,22 +301,22 @@ fn print_groups(groups: &[Group]) {
         if let Some(heading) = group.heading {
             println!("  {}", dim(heading));
         }
-        for flag in group.flags {
-            let name = match flag.value.is_empty() {
-                true => flag.name.to_string(),
-                false => format!("{} {}", flag.name, dim(flag.value)),
+        for row in &group.rows {
+            let name = match row.value_name.is_empty() {
+                true => row.name.to_string(),
+                false => format!("{} {}", row.name, dim(row.value_name)),
             };
-            for (index, note) in flag.note.iter().enumerate() {
-                // The name and default sit on the first line; the rest of the
-                // description continues underneath it.
+            for (index, note) in row.description.iter().enumerate() {
+                // The name and default sit on the first line. Description
+                // can break over multiple lines.
                 let (name, default) = match index {
-                    0 => (name.as_str(), flag.default),
+                    0 => (name.as_str(), row.default_note),
                     _ => ("", ""),
                 };
                 let line = format!(
                     "  {}{}{}",
-                    pad(name, name_width + PAD),
-                    pad(&dim(note), note_width + PAD),
+                    pad(name, name_width + COLUMN_GAP),
+                    pad(&dim(note), description_width + COLUMN_GAP),
                     dim(default)
                 );
                 println!("{}", line.trim_end());
@@ -291,14 +326,15 @@ fn print_groups(groups: &[Group]) {
 }
 
 fn print_encoder_flags() {
-    let width = ENCODER_FLAGS
+    let rows = flags_by_codec();
+    let width = rows
         .iter()
         .flat_map(|flags| flags.iter())
         .map(|flag| flag.chars().count())
         .max()
         .unwrap_or(0);
 
-    for flags in ENCODER_FLAGS {
+    for flags in &rows {
         let row: String = flags
             .iter()
             .map(|flag| pad(&dim(flag), width + 1))
@@ -307,20 +343,20 @@ fn print_encoder_flags() {
     }
 }
 
-fn columns(groups: &[Group]) -> (usize, usize) {
-    let rows = || groups.iter().flat_map(|group| group.flags);
+fn column_widths(groups: &[Group]) -> (usize, usize) {
+    let rows = || groups.iter().flat_map(|group| group.rows.iter());
 
     let name = rows()
-        .map(|flag| match flag.value.is_empty() {
-            true => flag.name.chars().count(),
-            false => flag.name.chars().count() + 1 + flag.value.chars().count(),
+        .map(|row| match row.value_name.is_empty() {
+            true => row.name.chars().count(),
+            false => row.name.chars().count() + 1 + row.value_name.chars().count(),
         })
         .chain(["Setting".len()])
         .max()
         .unwrap_or(0);
 
     let note = rows()
-        .flat_map(|flag| flag.note.iter())
+        .flat_map(|row| row.description.iter())
         .map(|note| note.chars().count())
         .chain(["Description".len()])
         .max()
@@ -334,34 +370,37 @@ mod tests {
     use super::*;
     use crate::cli::flags::{BUILD_FLAGS, RUN_FLAGS, field_flag_names};
 
-    fn documented(groups: &[Group]) -> Vec<&'static str> {
+    fn documented(groups: &[Group]) -> Vec<String> {
         groups
             .iter()
-            .flat_map(|group| group.flags)
+            .flat_map(|group| group.rows.iter())
             // `-y, --yes` documents two spellings in one row.
-            .flat_map(|flag| flag.name.split(", "))
+            .flat_map(|row| row.name.split(", "))
+            .map(str::to_string)
             .collect()
     }
 
-    fn all_documented() -> Vec<&'static str> {
-        documented(SINGLE_SHOT)
+    fn all_documented() -> Vec<String> {
+        documented(&single_shot_groups())
             .into_iter()
-            .chain(documented(BUILD))
-            .chain(ENCODER_FLAGS.iter().flat_map(|flags| flags.iter().copied()))
+            .chain(documented(&build_groups()))
+            .chain(flags_by_codec().into_iter().flatten())
             .collect()
     }
 
-    fn accepted() -> Vec<&'static str> {
+    fn accepted() -> Vec<String> {
         field_flag_names()
+            .into_iter()
             .chain(RUN_FLAGS.iter().copied())
             .chain(BUILD_FLAGS.iter().copied())
+            .map(str::to_string)
             .collect()
     }
 
     #[test]
     fn every_flag_is_documented() {
         let documented = all_documented();
-        let missing: Vec<&str> = accepted()
+        let missing: Vec<String> = accepted()
             .into_iter()
             .filter(|flag| !documented.contains(flag))
             .collect();
@@ -372,7 +411,7 @@ mod tests {
     #[test]
     fn every_documented_flag_exists() {
         let accepted = accepted();
-        let unknown: Vec<&str> = all_documented()
+        let unknown: Vec<String> = all_documented()
             .into_iter()
             .filter(|flag| !accepted.contains(flag))
             .collect();
@@ -387,9 +426,10 @@ mod tests {
     /// at a flag it refuses.
     #[test]
     fn build_documents_no_target_settings() {
-        let listed = documented(BUILD);
+        let listed = documented(&build_groups());
         let target_settings: Vec<&str> = field_flag_names()
-            .filter(|flag| listed.contains(flag))
+            .into_iter()
+            .filter(|flag| listed.iter().any(|listed| listed == flag))
             .collect();
 
         assert!(
