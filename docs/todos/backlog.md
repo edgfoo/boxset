@@ -17,17 +17,6 @@ Show a hint block at the end of the build section that highlights things like...
 - for videos with no speech or mostly-silent audio, suggest --no-audio
 - prompt people to review subtitles ✅
 
-## Add boxset config command
-
-Generates a boxset.toml command with the schema directive filled.
-
-The build system will need to bundle the schema so it's present on the consumer's machine.
-
-`boxset config video1.mp4` generates a config with a preset target for the given video.
-
-When `boxset video1.mp4 video2.mp4` is run, we'll prompt to run `boxset config video1.mp4
-video2.mp4`, which will generate a config with preset targets for those videos.
-
 ## Encoder settings that `extra_args` can't reach
 
 `-tile-columns` (vp9) and `flags=lanczos` on the scale filter both want to be

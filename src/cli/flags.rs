@@ -103,6 +103,7 @@ pub const RUN_FLAGS: &[&str] = &[
     "-h",
     "-V",
     "--version",
+    "--print-schema",
 ];
 
 #[cfg(test)]

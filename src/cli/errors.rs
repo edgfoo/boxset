@@ -261,6 +261,30 @@ pub fn toml_note(path: &std::path::Path, text: &str, error: &toml::de::Error) ->
     }
 }
 
+/// Single-shot runs take one source. When multiple are given
+/// (eg. `boxset a.mp4 b.mp4`), prompt to create a config file instead.
+pub fn several_sources(sources: &[std::path::PathBuf]) -> ! {
+    let names: Vec<String> = sources
+        .iter()
+        .map(|s| s.to_string_lossy().to_string())
+        .collect();
+
+    fail_with_note(Note {
+        severity: Severity::Error,
+        locator: None,
+        message: format!(
+            "boxset prepares one video at a time; you gave {}.",
+            names.len()
+        ),
+        detail: vec![
+            "Several videos are a project, which boxset describes in a config.".to_string(),
+            format!("Try: boxset config {}", names.join(" ")),
+            "     boxset build".to_string(),
+        ],
+        cause: None,
+    })
+}
+
 /// clap's parse failures, reworded so an unknown flag reads like
 /// every other boxset error.
 pub fn fail_parse(error: &clap::Error) -> ! {

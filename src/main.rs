@@ -2,9 +2,9 @@ use clap::{Parser, Subcommand};
 
 mod cli;
 
-/// `boxset video.mp4` (single-shot) and `boxset studio`/`build` are siblings,
-/// not a subcommand tree, so the positional source and the subcommands are
-/// both optional here and main.rs picks between them.
+/// `boxset video.mp4` (single-shot) and `boxset studio`/`build`/`config` are
+/// siblings, not a subcommand tree, so the positional sources and the
+/// subcommands are both optional here and main.rs picks between them.
 #[derive(Parser)]
 #[command(
     name = "boxset",
@@ -17,12 +17,17 @@ struct Cli {
     command: Option<Command>,
 
     /// A single video, prepared with no config read and none written.
-    source: Option<std::path::PathBuf>,
+    /// Several are accepted only to point at `boxset config`.
+    sources: Vec<std::path::PathBuf>,
 
     /// Print boxset's version, and the version and path of the ffmpeg and
     /// ffprobe it resolves.
     #[arg(long, short = 'V')]
     version: bool,
+
+    /// Write the JSON schema for boxset.toml to stdout.
+    #[arg(long = "print-schema")]
+    print_schema: bool,
 
     #[arg(long, short = 'h', global = true)]
     help: bool,
@@ -35,6 +40,8 @@ struct Cli {
 enum Command {
     /// Guided TUI: pick sources, configure targets, write config, build.
     Studio,
+    /// Write a starter boxset.toml, including config presets for the given sources
+    Config { sources: Vec<std::path::PathBuf> },
     /// Build every target in boxset.toml, or the ones named with --target.
     Build {
         #[arg(long = "target")]
@@ -68,6 +75,10 @@ fn main() -> anyhow::Result<()> {
             cli::print_build_help();
             return Ok(());
         }
+        ["config", "help"] => {
+            cli::print_config_help();
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -79,6 +90,7 @@ fn main() -> anyhow::Result<()> {
     if cli.help {
         match cli.command {
             Some(Command::Build { .. }) => cli::print_build_help(),
+            Some(Command::Config { .. }) => cli::print_config_help(),
             _ => cli::print_help(),
         }
         return Ok(());
@@ -89,9 +101,16 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    match (cli.command, cli.source) {
-        (None, None) => cli::print_summary(),
-        (None, Some(source)) => cli::run_single_shot(&source, &cli.fields)?,
+    if cli.print_schema {
+        cli::print_schema();
+        return Ok(());
+    }
+
+    match (cli.command, cli.sources.as_slice()) {
+        (None, []) => cli::print_summary(),
+        (None, [source]) => cli::run_single_shot(source, &cli.fields)?,
+        (None, several) => cli::several_sources(several),
+        (Some(Command::Config { sources }), _) => cli::write_config(&sources)?,
         (Some(Command::Studio), _) => todo!("launch the TUI"),
         (
             Some(Command::Build {

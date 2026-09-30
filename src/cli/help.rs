@@ -60,6 +60,12 @@ const GENERAL_COMMAND_FLAGS: &[CommandFlag] = &[
     flag("--verbose", "", "", "show ffmpeg errors"),
     flag("-h, --help", "", "", "show this doc"),
     flag("-V, --version", "", "", ""),
+    flag(
+        "--print-schema",
+        "",
+        "",
+        "boxset.toml JSON schema, to stdout",
+    ),
 ];
 
 const BUILD_COMMAND_FLAGS: &[CommandFlag] = &[
@@ -217,6 +223,7 @@ const RECIPES: &[(&str, &str)] = &[
 
 const COMMANDS: &[(&str, &str)] = &[
     ("boxset <video>", "prepare one video"),
+    ("boxset config <video>...", "write a boxset.toml to edit"),
     (
         "boxset build",
         "prepare many videos according to boxset.toml",
@@ -266,6 +273,49 @@ pub fn print_help() {
     print_encoder_flags();
     println!();
 }
+
+pub fn print_config_help() {
+    section("boxset config");
+    println!("  Create a starter boxset.toml.");
+    println!();
+
+    let width = CONFIG_FORMS
+        .iter()
+        .map(|(form, _)| form.chars().count())
+        .max()
+        .unwrap_or(0)
+        + COLUMN_GAP;
+    for (form, gloss) in CONFIG_FORMS {
+        println!("  {}{}", pad(form, width), dim(gloss));
+    }
+
+    println!();
+    println!("  {}", dim("For help with writing config files, refer to:"));
+    println!("  {}", dim_gray(boxset::generate::REFERENCE_URL));
+
+    section("Recipes");
+    for (index, (description, command)) in CONFIG_RECIPES.iter().enumerate() {
+        if index > 0 {
+            println!();
+        }
+        println!("  {}", dim_gray(description));
+        println!("  {command}");
+    }
+    println!();
+}
+
+const CONFIG_FORMS: &[(&str, &str)] = &[
+    ("boxset config", "Create an empty boxset.toml file"),
+    (
+        "boxset config <video>...",
+        "Create a boxset.toml file with config presets",
+    ),
+];
+
+const CONFIG_RECIPES: &[(&str, &str)] = &[(
+    "Create a boxset.toml file with config presets for Interview.mp4 and Cutaway.mp4",
+    "boxset config Interview.mp4 Cutaway.mp4",
+)];
 
 pub fn print_build_help() {
     section("boxset build");

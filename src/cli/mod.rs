@@ -1,6 +1,7 @@
 //! The plain-terminal client: flags in, `TargetConfig`/`Selection`/`Sources`
-//! to the backend, lines out. Holds no behaviour the backend lacks.
+//! to the backend, lines out.
 
+mod config;
 mod errors;
 mod flags;
 mod help;
@@ -10,9 +11,10 @@ mod recap;
 mod style;
 mod units;
 
-pub use errors::fail_parse;
+pub use config::write_config;
+pub use errors::{fail_parse, several_sources};
 pub use flags::FieldFlags;
-pub use help::{print_build_help, print_help, print_summary};
+pub use help::{print_build_help, print_config_help, print_help, print_summary};
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::{IsTerminal, Write};
@@ -65,6 +67,10 @@ pub fn print_version() {
 
     let (major, minor) = boxset::command::MIN_FFMPEG_VERSION;
     println!("  tested against ffmpeg {major}.{minor} and newer");
+}
+
+pub fn print_schema() {
+    print!("{}", boxset::schema::to_json_text());
 }
 
 /// How this invocation runs, as opposed to what its targets are: flags win
