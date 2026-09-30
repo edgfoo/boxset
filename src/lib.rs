@@ -14,6 +14,8 @@ pub mod error;
 pub mod execute;
 #[path = "lib/fields.rs"]
 pub mod fields;
+#[path = "lib/generate.rs"]
+pub mod generate;
 #[path = "lib/hints.rs"]
 pub mod hints;
 #[path = "lib/lock.rs"]

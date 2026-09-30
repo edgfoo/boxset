@@ -177,6 +177,10 @@ commits, tags and pushes from a maintainer's Mac. It runs dry by default; add
 `--execute` to do it. Configured under `[package.metadata.release]` in
 `Cargo.toml`; `publish = false` because boxset ships via Homebrew, not crates.io.
 
+A `pre-release-hook` regenerates `schema.json` into the release commit. A
+generated config pins its `#:schema` to the tag that wrote it, and GitHub serves
+that file straight from the tag, so a tag missing it serves a 404 for good.
+
 Pushing the tag is the trigger. `.github/workflows/release.yml` builds both macOS
 arches, renders `.github/homebrew/boxset.rb.template` with the two tarball
 checksums, audits it, drafts the GitHub release, pushes the formula to the

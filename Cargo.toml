@@ -15,6 +15,11 @@ tag-name = "v{{version}}"
 tag-message = "v{{version}}"
 pre-release-commit-message = "chore(release): v{{version}}"
 allow-branch = ["main"]
+# The schema is derived from the field table, so the release regenerates it
+# rather than trusting it to be committed. This runs before the release commit,
+# which stages the whole tree, so the tag always carries a schema matching the
+# code that the config's pinned URL names.
+pre-release-hook = ["sh", "-c", "cargo run --quiet -- --print-schema > schema.json"]
 
 [lib]
 name = "boxset"

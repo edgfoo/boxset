@@ -11,8 +11,14 @@ use crate::fields::{Field, Shape, TARGET_FIELDS, TOP_LEVEL_FIELDS};
 /// boxset that wrote it.
 pub const SCHEMA_URL_BASE: &str = "https://raw.githubusercontent.com/edgfoo/boxset";
 
+/// If the version looks like a prerelease, just point to whatever schema's on the
+/// main branch.
 pub fn schema_url(version: &str) -> String {
-    format!("{SCHEMA_URL_BASE}/v{version}/schema.json")
+    let git_ref = match version.contains('-') {
+        true => "main".to_string(),
+        false => format!("v{version}"),
+    };
+    format!("{SCHEMA_URL_BASE}/{git_ref}/schema.json")
 }
 
 pub fn generate() -> Value {
@@ -65,7 +71,10 @@ fn target_object() -> Value {
 }
 
 fn field_schema(field: &Field) -> Value {
-    with_description(schema_for_shape(field.toml_key, &field.shape), field.schema_doc)
+    with_description(
+        schema_for_shape(field.toml_key, &field.shape),
+        field.schema_doc,
+    )
 }
 
 fn with_description(mut schema: Value, doc: &str) -> Value {
@@ -158,8 +167,22 @@ mod tests {
         generate()["properties"]["target"]["items"]["properties"].clone()
     }
 
-    /// A closed schema is what makes an editor flag a typo. Opening one to
-    /// quiet a false positive would lose that with no other sign.
+    #[test]
+    fn the_committed_schema_matches_the_table() {
+        let committed = include_str!("../../schema.json");
+        assert_eq!(
+            committed,
+            to_json_text(),
+            "schema.json is stale; regenerate with `cargo run -- --print-schema > schema.json`"
+        );
+    }
+
+    #[test]
+    fn only_a_release_pins_its_own_tag() {
+        assert!(schema_url("0.4.0").ends_with("/v0.4.0/schema.json"));
+        assert!(schema_url("0.4.0-rc.1").ends_with("/main/schema.json"));
+    }
+
     #[test]
     fn a_target_rejects_unknown_keys() {
         assert_eq!(
