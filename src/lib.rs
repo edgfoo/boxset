@@ -12,6 +12,8 @@ pub mod environment;
 pub mod error;
 #[path = "lib/execute.rs"]
 pub mod execute;
+#[path = "lib/fields.rs"]
+pub mod fields;
 #[path = "lib/hints.rs"]
 pub mod hints;
 #[path = "lib/lock.rs"]
@@ -26,6 +28,8 @@ pub mod problem;
 pub mod report;
 #[path = "lib/resolve.rs"]
 pub mod resolve;
+#[path = "lib/schema.rs"]
+pub mod schema;
 #[path = "lib/settings.rs"]
 pub mod settings;
 #[path = "lib/sources.rs"]

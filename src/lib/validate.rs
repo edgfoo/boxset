@@ -3,30 +3,11 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-use crate::config::{
-    AudioField, Codec, Crop, PosterField, SubtitlesField, TOP_LEVEL_FIELDS, TargetConfig,
-};
+use crate::config::{AudioField, Codec, Crop, PosterField, SubtitlesField, TargetConfig};
+use crate::fields::{TARGET_KEYS, top_level_keys};
 use crate::outputs::{self, Naming};
 use crate::problem::{Problem, ProblemKind, Severity};
 use crate::sources::{ProbeErrorKind, SourceLookup, SourceState};
-
-const TARGET_FIELDS: &[&str] = &[
-    "src",
-    "name",
-    "quality",
-    "codecs",
-    "crop",
-    "widths",
-    "trim",
-    "fps",
-    "audio",
-    "poster",
-    "subtitles",
-    "h264",
-    "h265",
-    "vp9",
-    "av1",
-];
 
 /// Never short-circuits: one bad field must not hide the rest.
 ///
@@ -60,15 +41,15 @@ pub fn validate(
 
 fn check_top_level_fields(top_level: &BTreeMap<String, toml::Value>, problems: &mut Vec<Problem>) {
     for name in top_level.keys() {
-        let kind = if TARGET_FIELDS.contains(&name.as_str()) {
+        let kind = if TARGET_KEYS.contains(&name.as_str()) {
             ProblemKind::TargetFieldAtTopLevel { name: name.clone() }
         } else {
             // A misspelled target field lands here rather than in the branch
             // above, so a suggestion has to consider both lists.
             ProblemKind::UnknownField {
                 name: name.clone(),
-                suggestion: closest_match(name, TOP_LEVEL_FIELDS)
-                    .or_else(|| closest_match(name, TARGET_FIELDS)),
+                suggestion: closest_match(name, &top_level_keys())
+                    .or_else(|| closest_match(name, &TARGET_KEYS)),
             }
         };
         problems.push(Problem {
@@ -104,7 +85,7 @@ fn check_defaults(defaults: &TargetConfig, problems: &mut Vec<Problem>) {
             severity: Severity::Warning,
             kind: ProblemKind::UnknownField {
                 name: name.clone(),
-                suggestion: closest_match(name, TARGET_FIELDS),
+                suggestion: closest_match(name, &TARGET_KEYS),
             },
             target: None,
             field: None,
@@ -273,7 +254,7 @@ fn check_widths_against_source(
 
 fn check_unknown_fields(index: usize, config: &TargetConfig, problems: &mut Vec<Problem>) {
     for name in config.unknown.keys() {
-        let suggestion = closest_match(name, TARGET_FIELDS);
+        let suggestion = closest_match(name, &TARGET_KEYS);
         problems.push(Problem {
             severity: Severity::Warning,
             kind: ProblemKind::UnknownField {

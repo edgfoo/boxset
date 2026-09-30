@@ -7,9 +7,8 @@ use std::path::PathBuf;
 use clap::Args;
 
 use boxset::config::{
-    Anchor, AudioField, Codec, CodecOverrides, Crop, Fps, PosterField, PosterSettings,
-    Quality, SubtitleSettings, SubtitlesField, TargetConfig, TimeRange, TranscriptionModel,
-    model_names,
+    Anchor, AudioField, Codec, CodecOverrides, Crop, Fps, PosterField, PosterSettings, Quality,
+    SubtitleSettings, SubtitlesField, TargetConfig, TimeRange, TranscriptionModel, model_names,
 };
 use boxset::problem::Severity;
 
@@ -109,10 +108,8 @@ pub const RUN_FLAGS: &[&str] = &[
 #[cfg(test)]
 pub const BUILD_FLAGS: &[&str] = &["--target", "--config", "-c"];
 
-/// Every field flag, paired with whether this invocation gave it. One missing
-/// is one `build` accepts and silently ignores.
-fn field_flags(fields: &FieldFlags) -> [(&'static str, bool); 28] {
-    [
+fn given_field_flags(fields: &FieldFlags) -> Vec<(&'static str, bool)> {
+    vec![
         ("--name", fields.name.is_some()),
         ("--quality", fields.quality.is_some()),
         ("--codecs", fields.codecs.is_some()),
@@ -144,17 +141,10 @@ fn field_flags(fields: &FieldFlags) -> [(&'static str, bool); 28] {
     ]
 }
 
-#[cfg(test)]
-pub fn field_flag_names() -> impl Iterator<Item = &'static str> {
-    field_flags(&FieldFlags::default())
-        .into_iter()
-        .map(|(flag, _)| flag)
-}
-
 impl FieldFlags {
     /// The first field flag given, named as the user spelled it.
     pub fn first_field_flag(&self) -> Option<&'static str> {
-        field_flags(self)
+        given_field_flags(self)
             .into_iter()
             .find(|(_, given)| *given)
             .map(|(flag, _)| flag)
@@ -331,7 +321,6 @@ fn parse_model(raw: &str) -> Result<TranscriptionModel, Note> {
         .ok_or_else(|| unrecognised_value(raw, "a subtitle model", &model_names()))
 }
 
-
 fn parse_anchor(raw: &str) -> Result<Anchor, Note> {
     match raw {
         "centre" => Ok(Anchor::Centre),
@@ -396,4 +385,28 @@ fn parse_fps(raw: &str) -> Result<Fps, Note> {
         num: value.round() as u32,
         den: 1,
     })
+}
+
+#[cfg(test)]
+pub fn field_flag_names() -> Vec<&'static str> {
+    given_field_flags(&FieldFlags::default())
+        .into_iter()
+        .map(|(flag, _)| flag)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The field table is the list of what a client must express. A flag in it
+    /// that `given_field_flags` misses is one `build` would accept and ignore.
+    #[test]
+    fn every_target_flag_has_a_predicate() {
+        let mut named: Vec<String> = field_flag_names().into_iter().map(str::to_string).collect();
+        named.sort();
+        named.dedup();
+
+        assert_eq!(named, boxset::fields::target_flags());
+    }
 }

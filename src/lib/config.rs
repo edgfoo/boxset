@@ -75,8 +75,6 @@ impl Config {
     }
 }
 
-pub const TOP_LEVEL_FIELDS: &[&str] = &["out_dir", "jobs", "target", "defaults"];
-
 /// One `[[target]]` entry, or the flags of a single-shot run
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct TargetConfig {
