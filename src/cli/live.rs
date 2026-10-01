@@ -127,7 +127,7 @@ impl LiveReporter {
                 icon: icon(task.id.kind),
                 name: match task.output_path() {
                     Some(path) => filename(path),
-                    None => "loudness".to_string(),
+                    None => "Audio level check".to_string(),
                 },
                 dim_name: task.output_path().is_none(),
                 progress: 0.0,
