@@ -394,7 +394,7 @@ fn written_bytes(plan: &boxset::Plan, outcome: &boxset::execute::ExecutionOutcom
     plan.tasks
         .iter()
         .filter(|task| outcome.produced.contains(&task.id))
-        .filter_map(|task| std::fs::metadata(&task.output_path).ok())
+        .filter_map(|task| std::fs::metadata(task.output_path()?).ok())
         .map(|meta| meta.len())
         .sum()
 }
@@ -431,9 +431,10 @@ fn write_lockfile(
         .iter()
         .filter(|task| outcome.produced.contains(&task.id))
         .filter_map(|task| {
-            let output_hash = boxset::lock::hash_file(&task.output_path)?;
+            let output_path = task.output_path()?;
+            let output_hash = boxset::lock::hash_file(output_path)?;
             Some((
-                task.output_path.clone(),
+                output_path.to_path_buf(),
                 boxset::LockEntry {
                     source_hash: source_hashes
                         .get(&task.probe.src)

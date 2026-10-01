@@ -32,8 +32,20 @@ struct Row {
     task: TaskId,
     icon: String,
     name: String,
+    /// Set for work that writes no file, so it doesn't scan as an output.
+    dim_name: bool,
     progress: f32,
     result: Option<TaskReport>,
+}
+
+impl Row {
+    fn label(&self, width: usize) -> String {
+        let padded = format!("{:<width$}", self.name);
+        match self.dim_name {
+            true => dim(&padded),
+            false => padded,
+        }
+    }
 }
 
 struct Group {
@@ -113,7 +125,11 @@ impl LiveReporter {
             groups[index].rows.push(Row {
                 task: task.id,
                 icon: icon(task.id.kind),
-                name: filename(&task.output_path),
+                name: match task.output_path() {
+                    Some(path) => filename(path),
+                    None => "loudness".to_string(),
+                },
+                dim_name: task.output_path().is_none(),
                 progress: 0.0,
                 result: None,
             });
@@ -297,41 +313,36 @@ impl LiveReporter {
         let mut lines = Vec::new();
 
         for row in &group.rows {
-            let width = self.name_width;
+            let name = row.label(self.name_width);
             let Some(report) = &row.result else {
                 if live {
                     let percent = format!("{}%", (row.progress * 100.0) as u32);
-                    lines.push(format!(
-                        "  {} {:<width$}    {:>4}",
-                        row.icon,
-                        row.name,
-                        dim(&percent),
-                    ));
+                    lines.push(format!("  {} {}    {:>4}", row.icon, name, dim(&percent),));
                 }
                 continue;
             };
 
             match &report.outcome {
                 TaskOutcome::Succeeded => lines.push(format!(
-                    "  {} {:<width$}    {} {} {}  {}",
+                    "  {} {}    {} {} {}  {}",
                     row.icon,
-                    row.name,
+                    name,
                     bold_green("✓"),
                     dim("in"),
                     gray(&format!("{:<TIME_WIDTH$}", elapsed(report.elapsed))),
                     gray(&size(report.bytes)),
                 )),
                 TaskOutcome::Failed(_) => lines.push(format!(
-                    "  {} {:<width$}    {} {}",
+                    "  {} {}    {} {}",
                     row.icon,
-                    row.name,
+                    name,
                     red("✗"),
                     dim("failed"),
                 )),
                 TaskOutcome::Cancelled => lines.push(format!(
-                    "  {} {:<width$}    {} {}",
+                    "  {} {}    {} {}",
                     row.icon,
-                    row.name,
+                    name,
                     dim("−"),
                     dim("stopped"),
                 )),

@@ -98,13 +98,13 @@ fn plan_target(target: usize, settings: &Settings, probe: &Arc<Probe>) -> Vec<Ta
 
     for &width in &settings.widths {
         for &codec in &settings.codecs {
-            let output_path = outputs::rendition_path(&naming, &settings.codecs, width, codec);
+            let path = outputs::rendition_path(&naming, &settings.codecs, width, codec);
             tasks.push(make_task(
                 target,
                 probe,
                 TaskKind::Rendition { width, codec },
-                output_path,
                 TaskWork::Rendition {
+                    output: output(path),
                     codec,
                     width,
                     options: codec_options(settings, codec),
@@ -117,13 +117,12 @@ fn plan_target(target: usize, settings: &Settings, probe: &Arc<Probe>) -> Vec<Ta
         }
 
         if let Some(poster) = &settings.poster {
-            let output_path = outputs::poster_path(&naming, width);
             tasks.push(make_task(
                 target,
                 probe,
                 TaskKind::Poster { width },
-                output_path,
                 TaskWork::Poster {
+                    output: output(outputs::poster_path(&naming, width)),
                     width,
                     at: poster_timestamp(poster, settings),
                     crop: settings.crop,
@@ -137,8 +136,8 @@ fn plan_target(target: usize, settings: &Settings, probe: &Arc<Probe>) -> Vec<Ta
             target,
             probe,
             TaskKind::Subtitles,
-            outputs::subtitles_path(&naming),
             TaskWork::Subtitles {
+                output: output(outputs::subtitles_path(&naming)),
                 model: subtitles.model,
                 trim: settings.trim,
                 extra_args: Vec::new(),
@@ -146,22 +145,43 @@ fn plan_target(target: usize, settings: &Settings, probe: &Arc<Probe>) -> Vec<Ta
         ));
     }
 
+    // Every rendition that runs needs a measurement, so this goes in whenever one of them will normalise.
+    if needs_loudness(settings, &tasks) {
+        tasks.insert(
+            0,
+            make_task(
+                target,
+                probe,
+                TaskKind::Loudness,
+                TaskWork::Loudness {
+                    trim: settings.trim,
+                },
+            ),
+        );
+    }
+
     tasks
 }
 
-fn make_task(
-    target: usize,
-    probe: &Arc<Probe>,
-    kind: TaskKind,
-    output_path: PathBuf,
-    work: TaskWork,
-) -> Task {
-    let exists = output_path.exists();
+fn needs_loudness(settings: &Settings, tasks: &[Task]) -> bool {
+    let normalizing = settings.audio.as_ref().is_some_and(|a| a.normalize);
+    normalizing
+        && tasks
+            .iter()
+            .any(|t| matches!(t.work, TaskWork::Rendition { .. }))
+}
+
+fn output(path: PathBuf) -> crate::task::Output {
+    crate::task::Output {
+        exists: path.exists(),
+        path,
+    }
+}
+
+fn make_task(target: usize, probe: &Arc<Probe>, kind: TaskKind, work: TaskWork) -> Task {
     Task {
         id: TaskId { target, kind },
         probe: Arc::clone(probe),
-        output_path,
-        exists,
         work,
     }
 }
@@ -257,7 +277,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(
-            h264_task.output_path,
+            h264_task.output_path().unwrap(),
             PathBuf::from("assets/video/interview-480.mp4")
         );
     }
@@ -280,8 +300,9 @@ mod tests {
                 )
             })
             .unwrap()
-            .output_path
-            .clone();
+            .output_path()
+            .unwrap()
+            .to_path_buf();
         let vp9_path = plan
             .tasks
             .iter()
@@ -295,8 +316,9 @@ mod tests {
                 )
             })
             .unwrap()
-            .output_path
-            .clone();
+            .output_path()
+            .unwrap()
+            .to_path_buf();
         assert_eq!(
             h264_path,
             PathBuf::from("assets/video/interview-480-h264.mp4")
@@ -315,7 +337,7 @@ mod tests {
             .find(|t| matches!(t.id.kind, TaskKind::Poster { width: 480 }))
             .unwrap();
         assert_eq!(
-            poster.output_path,
+            poster.output_path().unwrap(),
             PathBuf::from("assets/video/wide-480-poster.jpg")
         );
     }

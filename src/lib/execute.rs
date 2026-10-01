@@ -17,7 +17,7 @@ use crate::environment::resolve_tool_path;
 use crate::error::{BoxsetError, FfmpegError, Tool, TranscribeError, classify_ffmpeg_failure};
 use crate::plan::Plan;
 use crate::report::{Phase, Reporter, TaskOutcome, TaskReport};
-use crate::task::{Task, TaskId, TaskWork};
+use crate::task::{Task, TaskId, TaskKind, TaskWork};
 use crate::temp::TempFile;
 use crate::transcribe;
 
@@ -26,7 +26,6 @@ pub struct ExecutionOutcome {
     pub succeeded: usize,
     pub failed: usize,
     pub cancelled: usize,
-    /// The tasks that wrote their output. A failed task is absent.
     pub produced: Vec<TaskId>,
     /// The ffmpeg commands each task spawned, in the order they ran
     pub commands: HashMap<TaskId, Vec<String>>,
@@ -94,6 +93,8 @@ pub fn execute(
                         break;
                     };
 
+                    let mut measured = None;
+
                     for task in &tasks[group.clone()] {
                         // Tasks that never started are not reported at all.
                         if run.is_cancelled() {
@@ -102,12 +103,15 @@ pub fn execute(
 
                         run.send(Event::Started(task.id));
                         let started = Instant::now();
-                        let result = run_task(task, &run);
+                        let result = run_task(task, &mut measured, &run);
                         let elapsed = started.elapsed();
-                        let bytes = result
-                            .is_ok()
-                            .then(|| std::fs::metadata(&task.output_path).ok().map(|m| m.len()))
-                            .flatten();
+                        let bytes = match result.is_ok() {
+                            true => task
+                                .output_path()
+                                .and_then(|path| std::fs::metadata(path).ok())
+                                .map(|m| m.len()),
+                            false => None,
+                        };
                         let _ = tx.send(Event::Finished(task.id, result, elapsed, bytes));
                     }
                 }
@@ -132,7 +136,9 @@ pub fn execute(
                     let outcome_kind = match result {
                         Ok(()) => {
                             outcome.succeeded += 1;
-                            outcome.produced.push(id);
+                            if id.kind != TaskKind::Loudness {
+                                outcome.produced.push(id);
+                            }
                             TaskOutcome::Succeeded
                         }
                         Err(e) if e.is_cancelled() => {
@@ -189,11 +195,53 @@ fn temp_path(output: &Path) -> PathBuf {
     output.with_file_name(name)
 }
 
-fn run_task(task: &Task, run: &Run) -> Result<(), BoxsetError> {
+fn run_task(
+    task: &Task,
+    measured: &mut Option<command::LoudnessMeasurement>,
+    run: &Run,
+) -> Result<(), BoxsetError> {
     match &task.work {
         TaskWork::Subtitles { model, trim, .. } => run_subtitles_task(task, *model, *trim, run),
-        _ => run_ffmpeg_task(task, run),
+        TaskWork::Loudness { trim } => {
+            *measured = Some(run_loudness_task(task, *trim, run)?);
+            Ok(())
+        }
+        _ => run_ffmpeg_task(task, measured.as_ref(), run),
     }
+}
+
+fn run_loudness_task(
+    task: &Task,
+    trim: Option<crate::settings::TimeRange>,
+    run: &Run,
+) -> Result<command::LoudnessMeasurement, BoxsetError> {
+    let stages = command::loudness_stages();
+    run.send(Event::Stage(task.id, stages[0], 1, stages.len() as u32));
+
+    let args = command::loudness_measure_args(&task.probe.src, trim);
+    let mut spawned = None;
+    let measured = run_ffmpeg(&args, |_| {}, 0.0, &mut spawned, run.cancel);
+    if let Some(spawned) = spawned {
+        run.send(Event::Spawned(task.id, spawned));
+    }
+
+    if run.is_cancelled() {
+        return Err(BoxsetError::Cancelled { task: task.id });
+    }
+
+    let fail = |source| BoxsetError::EncodeFailed {
+        task: task.id,
+        stage: None,
+        source,
+    };
+
+    let stderr = measured.map_err(fail)?;
+    command::parse_loudness_measurement(&stderr).ok_or_else(|| {
+        fail(FfmpegError {
+            kind: crate::error::FfmpegErrorKind::Unclassified,
+            stderr,
+        })
+    })
 }
 
 /// Extract 16kHz mono PCM, transcribe it, write WebVTT. Two stages, since the
@@ -216,14 +264,16 @@ fn run_subtitles_task(
         return Err(fail(TranscribeError::NoAudioTrack));
     }
 
-    if let Some(parent) = task.output_path.parent() {
+    let output_path = task.output_path().expect("subtitles write a file");
+
+    if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent).map_err(|source| BoxsetError::WriteFailed {
             path: parent.to_path_buf(),
             source,
         })?;
     }
 
-    let tmp = TempFile::new(temp_path(&task.output_path));
+    let tmp = TempFile::new(temp_path(output_path));
     let audio = TempFile::new(tmp.path().with_extension("pcm"));
     let stages = command::subtitle_stages();
 
@@ -251,8 +301,8 @@ fn run_subtitles_task(
         source,
     })?;
 
-    std::fs::rename(tmp.path(), &task.output_path).map_err(|source| BoxsetError::WriteFailed {
-        path: task.output_path.clone(),
+    std::fs::rename(tmp.path(), output_path).map_err(|source| BoxsetError::WriteFailed {
+        path: output_path.to_path_buf(),
         source,
     })?;
     tmp.keep();
@@ -286,15 +336,23 @@ fn transcribe_extracted(
     Ok(cues)
 }
 
-fn run_ffmpeg_task(task: &Task, run: &Run) -> Result<(), BoxsetError> {
-    if let Some(parent) = task.output_path.parent() {
+fn run_ffmpeg_task(
+    task: &Task,
+    measured: Option<&command::LoudnessMeasurement>,
+    run: &Run,
+) -> Result<(), BoxsetError> {
+    let output_path = task
+        .output_path()
+        .expect("rendition and poster tasks write a file");
+
+    if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent).map_err(|source| BoxsetError::WriteFailed {
             path: parent.to_path_buf(),
             source,
         })?;
     }
 
-    let tmp = TempFile::new(temp_path(&task.output_path));
+    let tmp = TempFile::new(temp_path(output_path));
     let src = &task.probe.src;
 
     let (stage_args, stage_names, passlog, codec) = match &task.work {
@@ -306,6 +364,7 @@ fn run_ffmpeg_task(task: &Task, run: &Run) -> Result<(), BoxsetError> {
             crop,
             fps,
             audio,
+            ..
         } => {
             let built = command::rendition_args(
                 src,
@@ -317,6 +376,7 @@ fn run_ffmpeg_task(task: &Task, run: &Run) -> Result<(), BoxsetError> {
                 *crop,
                 *fps,
                 audio.as_ref(),
+                measured,
                 &task.probe,
             );
             (
@@ -326,7 +386,9 @@ fn run_ffmpeg_task(task: &Task, run: &Run) -> Result<(), BoxsetError> {
                 Some(*codec),
             )
         }
-        TaskWork::Poster { width, at, crop } => (
+        TaskWork::Poster {
+            width, at, crop, ..
+        } => (
             vec![command::poster_args(
                 src,
                 tmp.path(),
@@ -339,7 +401,9 @@ fn run_ffmpeg_task(task: &Task, run: &Run) -> Result<(), BoxsetError> {
             None,
             None,
         ),
-        TaskWork::Subtitles { .. } => unreachable!("subtitles do not run through ffmpeg here"),
+        TaskWork::Subtitles { .. } | TaskWork::Loudness { .. } => {
+            unreachable!("handled by run_task")
+        }
     };
 
     let total = stage_args.len() as u32;
@@ -387,8 +451,8 @@ fn run_ffmpeg_task(task: &Task, run: &Run) -> Result<(), BoxsetError> {
         }
     }
 
-    std::fs::rename(tmp.path(), &task.output_path).map_err(|source| BoxsetError::WriteFailed {
-        path: task.output_path.clone(),
+    std::fs::rename(tmp.path(), output_path).map_err(|source| BoxsetError::WriteFailed {
+        path: output_path.to_path_buf(),
         source,
     })?;
     tmp.keep();
@@ -468,7 +532,7 @@ fn run_ffmpeg(
     duration: f64,
     spawned: &mut Option<String>,
     cancel: &Cancel,
-) -> Result<(), FfmpegError> {
+) -> Result<String, FfmpegError> {
     let Some(ffmpeg) = resolve_tool_path(Tool::Ffmpeg) else {
         return Err(FfmpegError {
             kind: crate::error::FfmpegErrorKind::Unclassified,
@@ -550,7 +614,7 @@ fn run_ffmpeg(
     };
 
     if status.success() {
-        return Ok(());
+        return Ok(stderr);
     }
 
     Err(FfmpegError {
@@ -583,9 +647,11 @@ mod tests {
                 audio_codec: Some("aac".to_string()),
                 size_bytes: 1_000_000,
             }),
-            output_path: PathBuf::from("out.jpg"),
-            exists: false,
             work: TaskWork::Poster {
+                output: crate::task::Output {
+                    path: PathBuf::from("out.jpg"),
+                    exists: false,
+                },
                 width,
                 at: crate::settings::Timestamp(0.0),
                 crop: None,

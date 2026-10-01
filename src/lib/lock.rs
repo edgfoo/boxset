@@ -117,15 +117,23 @@ fn describe_work(work: &TaskWork) -> String {
             crop,
             fps,
             audio,
+            ..
         } => {
             let crop = describe_crop(*crop);
             let trim = describe_trim(*trim);
             let fps = fps
                 .map(|f| f.to_string())
                 .unwrap_or_else(|| "source".to_string());
+
             let audio = audio
                 .as_ref()
-                .map(|a| format!("{}:{}", a.bitrate, a.normalize))
+                .map(|a| match a.normalize {
+                    true => {
+                        let t = &crate::command::LOUDNESS_TARGET;
+                        format!("{}:I={}:TP={}:LRA={}", a.bitrate, t.i, t.tp, t.lra)
+                    }
+                    false => format!("{}:false", a.bitrate),
+                })
                 .unwrap_or_else(|| "none".to_string());
             format!(
                 "rendition codec={codec:?} width={width} \
@@ -139,7 +147,9 @@ fn describe_work(work: &TaskWork) -> String {
                 options.extra_args,
             )
         }
-        TaskWork::Poster { width, at, crop } => {
+        TaskWork::Poster {
+            width, at, crop, ..
+        } => {
             let crop = describe_crop(*crop);
             format!("poster width={width} at={} crop={crop}", at.0)
         }
@@ -147,10 +157,15 @@ fn describe_work(work: &TaskWork) -> String {
             model,
             trim,
             extra_args,
+            ..
         } => {
             let trim = describe_trim(*trim);
             format!("subtitles model={model:?} trim={trim} extra={extra_args:?}")
         }
+
+        // The loudess meaasure task doesn't write a file, so there's
+        // no lockfile entry to describe
+        TaskWork::Loudness { .. } => String::new(),
     }
 }
 
@@ -192,8 +207,16 @@ mod tests {
     use crate::config::Codec;
     use crate::settings::{CodecOptions, Crop, Timestamp};
 
+    fn output() -> crate::task::Output {
+        crate::task::Output {
+            path: std::path::PathBuf::from("out"),
+            exists: false,
+        }
+    }
+
     fn rendition(width: u32) -> TaskWork {
         TaskWork::Rendition {
+            output: output(),
             codec: Codec::H264,
             width,
             options: CodecOptions {
@@ -234,11 +257,27 @@ mod tests {
     #[test]
     fn task_kinds_do_not_collide() {
         let poster = TaskWork::Poster {
+            output: output(),
             width: 480,
             at: Timestamp(0.0),
             crop: None,
         };
         assert_ne!(args_hash(&rendition(480)), args_hash(&poster));
+    }
+
+    #[test]
+    fn normalisation_is_part_of_the_hash() {
+        let with = |normalize| {
+            let mut work = rendition(480);
+            if let TaskWork::Rendition { audio, .. } = &mut work {
+                *audio = Some(crate::settings::AudioSettings {
+                    normalize,
+                    bitrate: "128k".to_string(),
+                });
+            }
+            args_hash(&work)
+        };
+        assert_ne!(with(true), with(false));
     }
 
     /// A crop is part of what produced an output, so two otherwise identical

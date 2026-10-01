@@ -7,6 +7,7 @@ use boxset::task::TaskKind;
 const VIDEO: &str = "⏵";
 const POSTER: &str = "◪";
 const SUBTITLES: &str = "┅";
+const LOUDNESS: &str = "∿";
 const SECTION: &str = "◆";
 const WARNING: &str = "▲";
 const ERROR: &str = "█";
@@ -23,6 +24,7 @@ const BOLD_GREEN: &str = "\x1b[1;32m";
 const GRAY: &str = "\x1b[90m";
 const DIM_GRAY: &str = "\x1b[2;90m";
 const DIM_CYAN: &str = "\x1b[2;36m";
+const DIM_MAGENTA: &str = "\x1b[2;35m";
 const BOLD_DIM: &str = "\x1b[1;2m";
 const RESET: &str = "\x1b[0m";
 
@@ -185,6 +187,7 @@ pub fn icon(kind: TaskKind) -> String {
         TaskKind::Rendition { .. } => magenta(VIDEO),
         TaskKind::Poster { .. } => blue(POSTER),
         TaskKind::Subtitles => cyan(SUBTITLES),
+        TaskKind::Loudness => wrap(DIM_MAGENTA, LOUDNESS),
     }
 }
 

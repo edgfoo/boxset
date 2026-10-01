@@ -357,8 +357,13 @@ fn parse_trim(raw: &str) -> Result<TimeRange, Note> {
 }
 
 fn parse_fps(raw: &str) -> Result<Fps, Note> {
-    let unrecognised =
-        || unrecognised_value(raw, "a frame rate", "a number like 25, 23.976 or 30000/1001");
+    let unrecognised = || {
+        unrecognised_value(
+            raw,
+            "a frame rate",
+            "a number like 25, 23.976 or 30000/1001",
+        )
+    };
 
     if raw.contains('/') {
         return boxset::config::parse_fps_ratio(raw.trim()).ok_or_else(unrecognised);

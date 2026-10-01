@@ -156,11 +156,11 @@ fn resolve_audio(field: Option<&AudioField>, has_audio: bool) -> Option<AudioSet
         Some(AudioField::Off(false)) => None,
         Some(AudioField::Off(true)) | None if !has_audio => None,
         Some(AudioField::Off(true)) | None => Some(AudioSettings {
-            normalize: false,
+            normalize: true,
             bitrate: default_audio_bitrate().to_string(),
         }),
         Some(AudioField::Settings(settings)) => Some(AudioSettings {
-            normalize: settings.normalize.unwrap_or(false),
+            normalize: settings.normalize.unwrap_or(true),
             bitrate: settings
                 .bitrate
                 .clone()
@@ -231,6 +231,19 @@ mod tests {
             src: Some(PathBuf::from("video.mp4")),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn normalisation_is_the_default() {
+        let normalize = |field| resolve_audio(field, true).map(|a| a.normalize);
+        assert_eq!(normalize(None), Some(true));
+
+        let off = crate::config::AudioField::Settings(crate::config::AudioSettings {
+            normalize: Some(false),
+            ..Default::default()
+        });
+        assert_eq!(normalize(Some(&off)), Some(false));
+        assert_eq!(resolve_audio(None, false), None);
     }
 
     fn out_dir() -> PathBuf {

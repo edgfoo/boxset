@@ -109,7 +109,69 @@ fn trim_args(trim: Option<TimeRange>) -> Vec<String> {
     args
 }
 
-fn audio_args(audio: Option<&AudioSettings>, codec: Codec) -> Vec<String> {
+pub const LOUDNESS_TARGET: Loudness = Loudness {
+    i: -14.0,
+    tp: -1.0,
+    lra: 11.0,
+};
+
+pub struct Loudness {
+    /// Integrated loudness, LUFS
+    pub i: f64,
+    /// True peak ceiling, dBTP
+    pub tp: f64,
+    /// Loudness range, LU
+    pub lra: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LoudnessMeasurement {
+    pub i: f64,
+    pub tp: f64,
+    pub lra: f64,
+    pub thresh: f64,
+}
+
+pub fn loudness_measure_args(src: &Path, trim: Option<TimeRange>) -> Vec<String> {
+    let Loudness { i, tp, lra } = LOUDNESS_TARGET;
+    let mut args = vec!["-y".to_string()];
+
+    args.extend(trim_args(trim));
+    args.extend(["-i".to_string(), src.to_string_lossy().to_string()]);
+    args.extend(["-vn".to_string()]);
+    args.extend([
+        "-af".to_string(),
+        format!("loudnorm=I={i}:TP={tp}:LRA={lra}:print_format=json"),
+    ]);
+    args.extend(["-f".to_string(), "null".to_string(), "-".to_string()]);
+    args
+}
+
+pub fn parse_loudness_measurement(stderr: &str) -> Option<LoudnessMeasurement> {
+    let start = stderr.rfind('{')?;
+    let block = &stderr[start..stderr[start..].find('}')? + start];
+
+    let field = |name: &str| -> Option<f64> {
+        let at = block.find(&format!("\"{name}\""))?;
+        let rest = &block[at..];
+        let open = rest.find(':')?;
+        let value = rest[open + 1..].split(',').next()?;
+        value.trim().trim_matches('"').parse().ok()
+    };
+
+    Some(LoudnessMeasurement {
+        i: field("input_i")?,
+        tp: field("input_tp")?,
+        lra: field("input_lra")?,
+        thresh: field("input_thresh")?,
+    })
+}
+
+fn audio_args(
+    audio: Option<&AudioSettings>,
+    codec: Codec,
+    measured: Option<&LoudnessMeasurement>,
+) -> Vec<String> {
     let Some(audio) = audio else {
         return vec!["-an".to_string()];
     };
@@ -121,8 +183,16 @@ fn audio_args(audio: Option<&AudioSettings>, codec: Codec) -> Vec<String> {
         audio.bitrate.clone(),
     ];
     if audio.normalize {
+        let Loudness { i, tp, lra } = LOUDNESS_TARGET;
+        let mut filter = format!("loudnorm=I={i}:TP={tp}:LRA={lra}");
+        if let Some(m) = measured {
+            filter.push_str(&format!(
+                ":measured_I={}:measured_TP={}:measured_LRA={}:measured_thresh={}:linear=true",
+                m.i, m.tp, m.lra, m.thresh
+            ));
+        }
         args.push("-af".to_string());
-        args.push("loudnorm".to_string());
+        args.push(filter);
     }
     args
 }
@@ -172,6 +242,7 @@ pub fn rendition_args(
     crop: Option<Crop>,
     fps: Option<Fps>,
     audio: Option<&AudioSettings>,
+    measured: Option<&LoudnessMeasurement>,
     probe: &Probe,
 ) -> RenditionArgs {
     let crf = options.crf.expect("resolved: quality expansion sets crf");
@@ -241,7 +312,7 @@ pub fn rendition_args(
                 "-pass".to_string(),
                 "2".to_string(),
             ]);
-            two.extend(audio_args(audio, codec));
+            two.extend(audio_args(audio, codec, measured));
             two.extend(extra_args.iter().cloned());
             two.push(tmp_str.clone());
 
@@ -271,7 +342,7 @@ pub fn rendition_args(
             }
 
             args.extend(["-pix_fmt".to_string(), "yuv420p".to_string()]);
-            args.extend(audio_args(audio, codec));
+            args.extend(audio_args(audio, codec, measured));
             args.extend(["-movflags".to_string(), "+faststart".to_string()]);
             args.extend(extra_args.iter().cloned());
             args.push(tmp_str);
@@ -302,6 +373,10 @@ pub fn poster_args(
     args.extend(["-q:v".to_string(), "3".to_string()]);
     args.push(tmp.to_string_lossy().to_string());
     args
+}
+
+pub fn loudness_stages() -> &'static [&'static str] {
+    &["measuring loudness"]
 }
 
 /// Extraction, then inference. Both are long enough on a real source to be
@@ -353,6 +428,52 @@ mod tests {
             keyframe_interval(None, None, &probe((25, 1), 4.5)),
             Some(100)
         );
+    }
+
+    #[test]
+    fn a_real_measurement_parses_and_a_failed_pass_yields_none() {
+        let stderr = include_str!("../../tests/fixtures/ffmpeg-stderr/loudnorm-measure.txt");
+        assert_eq!(
+            parse_loudness_measurement(stderr),
+            Some(LoudnessMeasurement {
+                i: -38.88,
+                tp: -25.82,
+                lra: 0.00,
+                thresh: -48.88,
+            })
+        );
+
+        let failed = include_str!("../../tests/fixtures/ffmpeg-stderr/no-such-stream.txt");
+        assert_eq!(parse_loudness_measurement(failed), None);
+    }
+
+    #[test]
+    fn a_measurement_reaches_the_filter() {
+        let audio = AudioSettings {
+            normalize: true,
+            bitrate: "128k".to_string(),
+        };
+        let measured = LoudnessMeasurement {
+            i: -38.88,
+            tp: -25.82,
+            lra: 0.0,
+            thresh: -48.88,
+        };
+
+        let args = audio_args(Some(&audio), Codec::H264, Some(&measured)).join(" ");
+        for key in [
+            "measured_I=-38.88",
+            "measured_TP=-25.82",
+            "measured_LRA=0",
+            "measured_thresh=-48.88",
+            "linear=true",
+        ] {
+            assert!(args.contains(key), "{key} missing from {args}");
+        }
+
+        let unmeasured = audio_args(Some(&audio), Codec::H264, None).join(" ");
+        assert!(unmeasured.contains("loudnorm=I=-14"));
+        assert!(!unmeasured.contains("measured_I"));
     }
 
     /// The interval follows the output: trim sets its length, `--fps` its

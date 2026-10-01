@@ -163,16 +163,30 @@ fn error_wording(error: &BoxsetError) -> (String, Vec<String>) {
             stage,
             task,
         } => {
-            let codec = match task.kind {
-                TaskKind::Rendition { codec, .. } => codec_name(codec),
-                TaskKind::Poster { .. } => "the poster",
-                TaskKind::Subtitles => "subtitles",
-            };
             let mut detail = vec![capitalise(&ffmpeg_cause(&source.kind))];
             if let Some(stage) = stage {
                 detail.push(format!("It failed during the {stage} stage."));
             }
             detail.push("Try: --verbose   to see ffmpeg's own output".to_string());
+
+            if task.kind == TaskKind::Loudness {
+                detail.push(
+                    "Normalised audio needs this measurement, so the videos \
+                     for this source were not encoded."
+                        .to_string(),
+                );
+                return (
+                    "boxset couldn't measure the audio loudness".to_string(),
+                    detail,
+                );
+            }
+
+            let codec = match task.kind {
+                TaskKind::Rendition { codec, .. } => codec_name(codec),
+                TaskKind::Poster { .. } => "the poster",
+                TaskKind::Subtitles => "subtitles",
+                TaskKind::Loudness => unreachable!("returned above"),
+            };
             (format!("boxset couldn't encode {codec}"), detail)
         }
         BoxsetError::WriteFailed { path, source } => (

@@ -134,6 +134,12 @@ arrives, will be another — see [todos/tui.md](todos/tui.md).
 - Content hashes, never mtime — mtime differs across machines and CI checkouts.
 - A failed task never leaves a truncated file where a valid one was: tasks write
   to a temp path and rename on success. One failed task doesn't stop the others.
+- Normalisation targets −14 LUFS, the streaming-platform figure, not ffmpeg's
+  −24 LUFS for broadcast. `LOUDNESS_TARGET` is in the lockfile key, so retuning
+  it re-encodes rather than reading as up to date.
+- A loudness measurement that fails or won't parse fails that target's
+  renditions, against *problems are warned about, not blocked on*: audio at the
+  wrong loudness isn't noticed until the video is on a page.
 
 ## Dependencies worth knowing about
 

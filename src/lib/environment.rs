@@ -96,6 +96,7 @@ fn plan_encoders(plan: &Plan) -> Vec<&'static str> {
         }
         TaskWork::Poster { .. } => vec![crate::command::POSTER_ENCODER],
         TaskWork::Subtitles { .. } => vec![crate::command::AUDIO_EXTRACT_ENCODER],
+        TaskWork::Loudness { .. } => vec![],
     }))
 }
 
@@ -423,9 +424,11 @@ mod tests {
                 audio_codec: Some("aac".to_string()),
                 size_bytes: 1_000_000,
             }),
-            output_path: PathBuf::from("out.vtt"),
-            exists: false,
             work: TaskWork::Subtitles {
+                output: crate::task::Output {
+                    path: PathBuf::from("out.vtt"),
+                    exists: false,
+                },
                 model,
                 trim: None,
                 extra_args: Vec::new(),
@@ -475,9 +478,11 @@ mod tests {
                 kind: TaskKind::Rendition { width: 640, codec },
             },
             probe,
-            output_path: PathBuf::from("out.mp4"),
-            exists: false,
             work: TaskWork::Rendition {
+                output: crate::task::Output {
+                    path: PathBuf::from("out.mp4"),
+                    exists: false,
+                },
                 codec,
                 width: 640,
                 options: Default::default(),

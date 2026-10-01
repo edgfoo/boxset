@@ -58,7 +58,7 @@ fn column_of(kind: TaskKind) -> Option<(u32, usize)> {
             Some((width, column))
         }
         TaskKind::Poster { width } => Some((width, POSTER_COLUMN)),
-        TaskKind::Subtitles => None,
+        TaskKind::Subtitles | TaskKind::Loudness => None,
     }
 }
 
@@ -97,10 +97,14 @@ pub fn group_by_source(plan: &Plan) -> Vec<SourceBlock> {
         };
         let target = &mut blocks[block].targets[slot];
 
+        let Some(output_path) = task.output_path() else {
+            continue;
+        };
+
         let cell = Cell {
             icon: icon(task.id.kind),
-            name: filename(&task.output_path),
-            exists: task.exists,
+            name: filename(output_path),
+            exists: task.exists(),
         };
 
         let Some((width, column)) = column_of(task.id.kind) else {
