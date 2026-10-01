@@ -1,19 +1,24 @@
-# boxset
+# Boxset
 
-Prepares a video for presentation on the web: transcoding to multiple formats and sizes, generating poster images, and producing subtitles.
+Prepares a video for presentation on the web.
 
-> [!WARNING]
-> **boxset is a work in progress.** Flags, config keys, and output names can all still change.
+Create multiple widths and transcodings, capture poster images, generate subtitles, and more – all with a single command.
 
-## How to use
+<img width="720" alt="Boxset demo video" src="https://github.com/user-attachments/assets/6a036ccf-84a8-4467-a357-415841319b2d" />
 
-Run boxset with the video you want to prepare.
+## What it does
+
+Run boxset with the video you want to prepare...
 
 ```bash
-boxset interview.mp4
+boxset interview.mov
 ```
 
-This gives you multiple compressed transcodings at different sizes, a poster frame for each size, and subtitles.
+And you'll get:
+* MP4 (H264) and WebM (VP9) versions, at a series of widths equal to and below the source video
+* fine-tuned compression for video and audio tracks
+* a poster image for each output width
+* subtitles generated on your machine (using NVidia's Parakeet model by default)
 
 ```
 export/
@@ -22,11 +27,21 @@ export/
   interview.vtt
 ```
 
-The sizes are chosen from the source: the largest matches the source video, and one or two smaller versions for loading on smaller devices.
+## Installing
 
-Subtitles are transcribed on your own machine with Whisper.
+Boxset is available in Homebrew.
 
-Boxset offers a wealth of command line options that control the output set, compression, and other default behaviour.
+```bash
+brew install edgfoo/boxset/boxset
+```
+
+[ffmpeg]([url](https://ffmpeg.org/)) – the tool that powers Boxset's video and audio encoding – is installed as a dependency by Homebrew. Transcription models are installed by Boxset on demand.
+
+Boxset is currently available for macOS (Intel and Apple Silicon).
+
+## How to use it
+
+Boxset offers a wealth of command line options that configure what comes out of Boxset.
 
 ```bash
 boxset interview.mp4 --quality high --codecs h264,av1 --widths 720,1440
@@ -38,9 +53,9 @@ Simple editing tasks like cropping and trimming can also be accomplished.
 boxset interview.mp4 --quality high --crop 9:16 --crop-anchor top --trim 0:05-1:30
 ```
 
-Run `boxset --help` for the full flag list, and `boxset --version` to see which ffmpeg it resolved.
+Run `boxset --help` for the full flag list.
 
-### Projects
+## Project files
 
 For repeated work or multiple videos, use a `boxset.toml` to describe the work to be done, before running `boxset build`.
 
@@ -63,39 +78,4 @@ crop_anchor = "top"
 
 A `target` is a configuration for a single source video. The `defaults` block applies options to all targets.
 
-Any options left out of both are worked out from the source with each build.
-
-Paths resolve against the config's directory, so `boxset build` means the same thing from anywhere.
-
-## What you get
-
-|                  |                                                                                                       |
-| ---------------- | ----------------------------------------------------------------------------------------------------- |
-| 🎞️ **Video**     | `h264` and `vp9` by default; `h265` and `av1` available. Each at a few sizes, chosen from the source. |
-| 🖼️ **Posters**   | A JPEG per size, from a frame chosen automatically or one you name.                                   |
-| 💬 **Subtitles** | A WebVTT file, transcribed on your machine with Whisper.                                              |
-| 📐 **Cropping**  | Aspect-ratio crops with an anchor, so a landscape source can become a vertical one.                   |
-| ✂️ **Trimming**  | A single start/end range.                                                                             |
-| 🔒 `boxset.lock` | Records the source hash, output hash, ffmpeg version, and the exact commands run.                     |
-
-## Installing
-
-Use Homebrew:
-
-```bash
-brew install edgfoo/boxset/boxset
-```
-
-That pulls from the [edgfoo/homebrew-boxset](https://github.com/edgfoo/homebrew-boxset) tap. After that, `brew upgrade boxset` picks up new releases.
-
-boxset ships as a prebuilt binary for Apple silicon and Intel Macs, so installing takes seconds. Homebrew pulls in ffmpeg alongside it.
-
-boxset needs ffmpeg 7.0 or newer, built with libx264, libx265, libvpx, libsvtav1 and libopus. Installing boxset via Homebrew should ensure this requirement is met.
-
-## Licence
-
-boxset is [MIT](./LICENSE-MIT) or [Apache-2.0](./LICENSE-APACHE).
-
-It runs ffmpeg as a subprocess but doesn't redistribute it. Installing via Homebrew pulls ffmpeg in as a dependency.
-
-Subtitles are transcribed by [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp), which is MIT licensed and compiled into the binary.
+Find more information in [docs/boxset-toml.md](docs/boxset-toml.md).
