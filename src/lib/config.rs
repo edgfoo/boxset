@@ -255,11 +255,45 @@ pub struct TimeRange {
     pub end: Option<String>,
 }
 
-/// A rational frame rate, so 23.976 / 59.94 survive resolution intact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub struct Fps {
-    pub num: u32,
-    pub den: u32,
+/// A frame rate, written as a number or fraction string.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Fps {
+    Decimal(f64),
+    Ratio { num: u32, den: u32 },
+}
+
+impl<'de> Deserialize<'de> for Fps {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Fps, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Written {
+            Number(f64),
+            Text(String),
+        }
+
+        match Written::deserialize(deserializer)? {
+            Written::Number(value) => match value.is_finite() && value > 0.0 {
+                true => Ok(Fps::Decimal(value)),
+                false => Err(serde::de::Error::custom(FPS_HINT)),
+            },
+            Written::Text(text) => {
+                parse_fps_ratio(&text).ok_or_else(|| serde::de::Error::custom(FPS_HINT))
+            }
+        }
+    }
+}
+
+pub const FPS_HINT: &str = "a frame rate like 25, 23.976 or \"30000/1001\"";
+
+/// Only the `num/den` string lands here; a bare number is already a rate.
+pub fn parse_fps_ratio(text: &str) -> Option<Fps> {
+    let (num, den) = text.split_once('/')?;
+    let num: u32 = num.trim().parse().ok()?;
+    let den: u32 = den.trim().parse().ok()?;
+    match num > 0 && den > 0 {
+        true => Some(Fps::Ratio { num, den }),
+        false => None,
+    }
 }
 
 /// `false` to switch off, or a table to configure.
@@ -388,6 +422,35 @@ mod tests {
 
     fn parse(text: &str) -> Config {
         toml::from_str(text).expect("test config parses")
+    }
+
+    #[test]
+    fn fps_takes_a_number_or_a_ratio() {
+        let fps = |text: &str| {
+            parse(&format!("[[target]]\nsrc = \"a.mp4\"\nfps = {text}\n")).targets[0]
+                .fps
+                .expect("fps parses")
+        };
+        assert_eq!(fps("25"), Fps::Decimal(25.0));
+        assert_eq!(fps("23.976"), Fps::Decimal(23.976));
+        assert_eq!(
+            fps("\"30000/1001\""),
+            Fps::Ratio {
+                num: 30000,
+                den: 1001
+            }
+        );
+    }
+
+    #[test]
+    fn fps_rejects_a_rate_that_is_not_a_number_or_a_ratio() {
+        for text in ["\"bogus\"", "0", "-25", "\"30000/0\"", "\"/1001\""] {
+            let toml = format!("[[target]]\nsrc = \"a.mp4\"\nfps = {text}\n");
+            assert!(
+                toml::from_str::<Config>(&toml).is_err(),
+                "{text} should not parse"
+            );
+        }
     }
 
     #[test]

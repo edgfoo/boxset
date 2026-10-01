@@ -111,6 +111,12 @@ fn schema_for_shape(key: &str, shape: &Shape) -> Value {
             "pattern": regex,
             "$comment": hint,
         }),
+        Shape::NumberOrRatio => json!({
+            "anyOf": [
+                { "type": "number", "exclusiveMinimum": 0 },
+                { "type": "string", "pattern": r"^\d+\s*/\s*\d+$" },
+            ],
+        }),
         Shape::Table(fields) | Shape::CodecTable(fields) => table(key, fields),
         // `false` switches the feature off. `true` parses today but means
         // nothing, so the schema admits only the boolean that does something.

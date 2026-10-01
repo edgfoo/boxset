@@ -91,7 +91,7 @@ fn video_filters(width: u32, crop: Option<Crop>, fps: Option<Fps>, probe: &Probe
     filters.push(format!("scale={width}:-2"));
 
     if let Some(fps) = fps {
-        filters.push(format!("fps={}/{}", fps.num, fps.den));
+        filters.push(format!("fps={fps}"));
     }
 
     filters.join(",")
@@ -140,8 +140,7 @@ const KEYFRAME_SECONDS: f64 = 4.0;
 /// unknown.
 fn keyframe_interval(fps: Option<Fps>, trim: Option<TimeRange>, probe: &Probe) -> Option<u32> {
     let rate = match fps {
-        Some(fps) if fps.den > 0 => fps.num as f64 / fps.den as f64,
-        Some(_) => return None,
+        Some(fps) => fps.rate(),
         None if probe.frame_rate.1 > 0 => probe.frame_rate.0 as f64 / probe.frame_rate.1 as f64,
         None => return None,
     };
@@ -366,7 +365,7 @@ mod tests {
         });
         assert_eq!(keyframe_interval(None, trim, &probe((25, 1), 60.0)), None);
 
-        let fps = Some(Fps { num: 25, den: 1 });
+        let fps = Some(Fps::Ratio { num: 25, den: 1 });
         assert_eq!(
             keyframe_interval(fps, None, &probe((50, 1), 30.0)),
             Some(100)

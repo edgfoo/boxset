@@ -121,7 +121,7 @@ fn describe_work(work: &TaskWork) -> String {
             let crop = describe_crop(*crop);
             let trim = describe_trim(*trim);
             let fps = fps
-                .map(|f| format!("{}/{}", f.num, f.den))
+                .map(|f| f.to_string())
                 .unwrap_or_else(|| "source".to_string());
             let audio = audio
                 .as_ref()

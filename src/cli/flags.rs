@@ -356,36 +356,18 @@ fn parse_trim(raw: &str) -> Result<TimeRange, Note> {
     })
 }
 
-/// A decimal like `23.976` becomes an exact rational; ffmpeg is given the
-/// ratio rather than a rounded float.
 fn parse_fps(raw: &str) -> Result<Fps, Note> {
-    let unrecognised = || {
-        unrecognised_value(
-            raw,
-            "a frame rate",
-            "a number like 25, 23.976 or 30000/1001",
-        )
-    };
+    let unrecognised =
+        || unrecognised_value(raw, "a frame rate", "a number like 25, 23.976 or 30000/1001");
 
-    if let Some((num, den)) = raw.split_once('/') {
-        return Ok(Fps {
-            num: num.trim().parse().map_err(|_| unrecognised())?,
-            den: den.trim().parse().map_err(|_| unrecognised())?,
-        });
+    if raw.contains('/') {
+        return boxset::config::parse_fps_ratio(raw.trim()).ok_or_else(unrecognised);
     }
     let value: f64 = raw.trim().parse().map_err(|_| unrecognised())?;
-    // 23.976 and 29.97 are 24000/1001 and 30000/1001; recover the exact form.
-    let rounded = (value * 1001.0 / 1000.0).round();
-    if ((rounded * 1000.0 / 1001.0) - value).abs() < 0.001 && value.fract() != 0.0 {
-        return Ok(Fps {
-            num: (rounded * 1000.0) as u32,
-            den: 1001,
-        });
+    match value.is_finite() && value > 0.0 {
+        true => Ok(Fps::Decimal(value)),
+        false => Err(unrecognised()),
     }
-    Ok(Fps {
-        num: value.round() as u32,
-        den: 1,
-    })
 }
 
 #[cfg(test)]

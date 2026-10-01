@@ -46,9 +46,9 @@ pub fn resolve(config: &TargetConfig, probe: &Probe, out_dir: &std::path::Path) 
         crop,
         widths,
         trim,
-        fps: config.fps.map(|f| Fps {
-            num: f.num,
-            den: f.den,
+        fps: config.fps.map(|f| match f {
+            config::Fps::Decimal(value) => Fps::Decimal(value),
+            config::Fps::Ratio { num, den } => Fps::Ratio { num, den },
         }),
         audio,
         poster,

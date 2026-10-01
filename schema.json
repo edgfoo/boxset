@@ -107,23 +107,17 @@
           "description": "Crop to an aspect ratio. A bare string is centred."
         },
         "fps": {
-          "additionalProperties": false,
-          "description": "Output frame rate, as an exact ratio.",
-          "properties": {
-            "den": {
-              "description": "Denominator.",
-              "maximum": 1001,
-              "minimum": 1,
-              "type": "integer"
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
             },
-            "num": {
-              "description": "Numerator, so 23.976 is 24000/1001.",
-              "maximum": 1000000,
-              "minimum": 1,
-              "type": "integer"
+            {
+              "pattern": "^\\d+\\s*/\\s*\\d+$",
+              "type": "string"
             }
-          },
-          "type": "object"
+          ],
+          "description": "Output frame rate, as a number or a num/den ratio."
         },
         "h264": {
           "additionalProperties": false,
@@ -459,23 +453,17 @@
             "description": "Crop to an aspect ratio. A bare string is centred."
           },
           "fps": {
-            "additionalProperties": false,
-            "description": "Output frame rate, as an exact ratio.",
-            "properties": {
-              "den": {
-                "description": "Denominator.",
-                "maximum": 1001,
-                "minimum": 1,
-                "type": "integer"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
               },
-              "num": {
-                "description": "Numerator, so 23.976 is 24000/1001.",
-                "maximum": 1000000,
-                "minimum": 1,
-                "type": "integer"
+              {
+                "pattern": "^\\d+\\s*/\\s*\\d+$",
+                "type": "string"
               }
-            },
-            "type": "object"
+            ],
+            "description": "Output frame rate, as a number or a num/den ratio."
           },
           "h264": {
             "additionalProperties": false,

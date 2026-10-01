@@ -48,10 +48,29 @@ pub struct TimeRange {
     pub end_secs: Option<f64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Fps {
-    pub num: u32,
-    pub den: u32,
+/// A frame rate value either as a decimal (23.976) or fraction (24000/1001)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Fps {
+    Decimal(f64),
+    Ratio { num: u32, den: u32 },
+}
+
+impl Fps {
+    pub fn rate(self) -> f64 {
+        match self {
+            Fps::Decimal(value) => value,
+            Fps::Ratio { num, den } => num as f64 / den as f64,
+        }
+    }
+}
+
+impl std::fmt::Display for Fps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Fps::Decimal(value) => write!(f, "{value}"),
+            Fps::Ratio { num, den } => write!(f, "{num}/{den}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

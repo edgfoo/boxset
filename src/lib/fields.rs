@@ -24,6 +24,9 @@ pub enum Shape {
         regex: &'static str,
         hint: &'static str,
     },
+    /// A positive number, or a `num/den` string for a rate that is not an
+    /// exact decimal
+    NumberOrRatio,
     Table(&'static [Field]),
     /// Like `Table`, but can also be `false`
     Toggle(&'static [Field]),
@@ -159,18 +162,6 @@ const TRIM_FIELDS: &[Field] = &[
         default_note: "the end of the source",
         ..Field::new("end", TIMESTAMP, "Where the output ends.")
     },
-];
-
-const FPS_FIELDS: &[Field] = &[
-    Field::new(
-        "num",
-        Shape::Integer {
-            min: 1,
-            max: 1_000_000,
-        },
-        "Numerator, so 23.976 is 24000/1001.",
-    ),
-    Field::new("den", Shape::Integer { min: 1, max: 1001 }, "Denominator."),
 ];
 
 const CROP_FIELDS: &[Field] = &[
@@ -366,8 +357,8 @@ pub const TARGET_FIELDS: &[Field] = &[
         default_note: "the source's",
         ..Field::new(
             "fps",
-            Shape::Table(FPS_FIELDS),
-            "Output frame rate, as an exact ratio.",
+            Shape::NumberOrRatio,
+            "Output frame rate, as a number or a num/den ratio.",
         )
     },
     Field {
