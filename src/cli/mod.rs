@@ -326,6 +326,7 @@ fn run(
     ) {
         println!("{line}");
     }
+    println!();
 
     let all_outputs = boxset::plan::all_output_paths(&resolved);
     write_lockfile(
