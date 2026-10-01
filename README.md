@@ -42,7 +42,7 @@ Run `boxset --help` for the full flag list, and `boxset --version` to see which 
 
 ### Projects
 
-For repeated work or multiple videos, use a `boxset.toml` to describe the work to be done, before running `boxset build` to act on it.
+For repeated work or multiple videos, use a `boxset.toml` to describe the work to be done, before running `boxset build`.
 
 ```toml
 out_dir = "src/assets/video"

@@ -7,7 +7,7 @@ use crate::config::CONFIG_FILE;
 use crate::schema::schema_url;
 use crate::settings::derive_ladder;
 
-pub const REFERENCE_URL: &str = "https://github.com/edgfoo/boxset/blob/main/docs/settings.md";
+pub const REFERENCE_URL: &str = "https://github.com/edgfoo/boxset/blob/main/docs/boxset-toml.md";
 
 /// Shown when a probe failed to return a given source's width
 const EXAMPLE_LADDER: [u32; 2] = [640, 1280];
