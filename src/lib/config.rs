@@ -215,9 +215,10 @@ pub const ALL_CODECS: [Codec; 4] = [Codec::H264, Codec::H265, Codec::Vp9, Codec:
 /// What a target encodes when `codecs` is unset: h264 for reach, vp9 for size.
 pub const DEFAULT_CODECS: [Codec; 2] = [Codec::H264, Codec::Vp9];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Anchor {
+    #[default]
     Centre,
     Top,
     Bottom,
@@ -246,7 +247,11 @@ impl Anchor {
 #[serde(untagged)]
 pub enum Crop {
     Bare(String),
-    Anchored { ratio: String, anchor: Anchor },
+    Anchored {
+        ratio: String,
+        #[serde(default)]
+        anchor: Anchor,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize)]
