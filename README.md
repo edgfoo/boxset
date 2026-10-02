@@ -47,7 +47,9 @@ Boxset is currently available for macOS (Intel and Apple Silicon).
 
 ## How to use it
 
-Boxset offers a wealth of command line options that configure what comes out of Boxset.
+The `boxset <video>` command works without any flags, giving you a set of transcoded outputs and assets following Boxset's informed preset rules.
+
+But almost every aspect of this work – quality, codecs (H264, H265, AV1, VP9), video widths, and more – can be controlled through command line flags.
 
 ```bash
 boxset interview.mp4 --quality high --codecs h264,av1 --widths 720,1440
@@ -60,6 +62,8 @@ boxset interview.mp4 --quality high --crop 9:16 --crop-anchor top --trim 0:05-1:
 ```
 
 Run `boxset --help` for the full flag list.
+
+The `boxset <video>` command only accepts a single video. To configure and process multiple videos in one run, use a `boxset.toml` project file.
 
 ## Project files
 
