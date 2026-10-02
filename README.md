@@ -1,10 +1,15 @@
 # Boxset
 
-Prepares a video for presentation on the web.
+Prepare videos for the web.
 
 Create multiple widths and transcodings, capture poster images, generate subtitles, and more – all with a single command.
 
-<img width="720" alt="Boxset demo video" src="https://github.com/user-attachments/assets/6a036ccf-84a8-4467-a357-415841319b2d" />
+<img width="700" alt="Boxset demo video" src="https://github.com/user-attachments/assets/6a036ccf-84a8-4467-a357-415841319b2d" />
+
+> [!NOTE]
+> Boxset is a new tool and is still in development. <br/>
+> Expect bugs and changes to the interface until the project reaches `1.0`.</br>
+> Feedback, issues and contributions welcome!
 
 ## What it does
 
@@ -15,10 +20,11 @@ boxset interview.mov
 ```
 
 And you'll get:
-* MP4 (H264) and WebM (VP9) versions, at a series of widths equal to and below the source video
-* fine-tuned compression for video and audio tracks
-* a poster image for each output width
-* subtitles generated on your machine (using NVidia's Parakeet model by default)
+
+- MP4 (H264) and WebM (VP9) versions, at a series of widths equal to and below the source video
+- fine-tuned compression for video and audio tracks
+- a poster image for each output width
+- subtitles generated on your machine (using NVidia's Parakeet model by default)
 
 ```
 export/
@@ -35,7 +41,7 @@ Boxset is available in Homebrew.
 brew install edgfoo/boxset/boxset
 ```
 
-[ffmpeg]([url](https://ffmpeg.org/)) – the tool that powers Boxset's video and audio encoding – is installed as a dependency by Homebrew. Transcription models are installed by Boxset on demand.
+[ffmpeg](<[url](https://ffmpeg.org/)>) – the tool that powers Boxset's video and audio encoding – is installed as a dependency by Homebrew. Transcription models are installed by Boxset on demand.
 
 Boxset is currently available for macOS (Intel and Apple Silicon).
 
