@@ -175,7 +175,7 @@ jobs:
         if: needs.version.outputs.prerelease == 'false'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.TAP_APP_ID }}
+          client-id: ${{ vars.TAP_CLIENT_ID }}
           private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
           owner: edgfoo
           repositories: homebrew-boxset
