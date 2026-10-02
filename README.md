@@ -4,11 +4,11 @@ Prepare videos for the web.
 
 Create multiple widths and transcodings, capture poster images, generate subtitles, and more – all with a single command.
 
-<img width="700" alt="Boxset demo video" src="https://github.com/user-attachments/assets/6a036ccf-84a8-4467-a357-415841319b2d" />
+![Boxset CLI demo](https://github.com/user-attachments/assets/6a036ccf-84a8-4467-a357-415841319b2d)
 
-> [!NOTE]
-> Boxset is a new tool and is still in development. <br/>
-> Expect bugs and changes to the interface until the project reaches `1.0`.</br>
+> 🚧 **Work in progress**<br/>
+> Boxset is a newly-released tool and is still in development.
+> Expect bugs and breaking changes until the project reaches `1.0`.</br>
 > Feedback, issues and contributions welcome!
 
 ## What it does
