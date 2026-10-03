@@ -131,6 +131,13 @@ pub struct LoudnessMeasurement {
     pub thresh: f64,
 }
 
+impl LoudnessMeasurement {
+    /// loudnorm measures silence as -inf, then rejects -inf as a measured value.
+    pub fn is_silent(&self) -> bool {
+        !(self.i.is_finite() && self.tp.is_finite())
+    }
+}
+
 pub fn loudness_measure_args(src: &Path, trim: Option<TimeRange>) -> Vec<String> {
     let Loudness { i, tp, lra } = LOUDNESS_TARGET;
     let mut args = vec!["-y".to_string()];
@@ -180,8 +187,13 @@ fn audio_args(
         audio_encoder(codec).to_string(),
         "-b:a".to_string(),
         audio.bitrate.clone(),
+        // The loudnorm step outputs 192kHz audio. We need to downsample this
+        // to 48kHz. If we didn't, aac would try to match the 192kHz but hit its
+        // limit of 96kHz, which is way beyond human perception and simply wastes bits.
+        "-ar".to_string(),
+        "48000".to_string(),
     ];
-    if audio.normalize {
+    if audio.normalize && !measured.is_some_and(LoudnessMeasurement::is_silent) {
         let Loudness { i, tp, lra } = LOUDNESS_TARGET;
         let mut filter = format!("loudnorm=I={i}:TP={tp}:LRA={lra}");
         if let Some(m) = measured {
@@ -439,6 +451,35 @@ mod tests {
 
         let failed = include_str!("../../tests/fixtures/ffmpeg-stderr/no-such-stream.txt");
         assert_eq!(parse_loudness_measurement(failed), None);
+    }
+
+    #[test]
+    fn a_silent_track_skips_loudnorm() {
+        let stderr = include_str!("../../tests/fixtures/ffmpeg-stderr/loudnorm-measure-silent.txt");
+        let measured = parse_loudness_measurement(stderr).expect("silence still parses");
+        assert!(measured.is_silent());
+
+        let audio = AudioSettings {
+            normalize: true,
+            bitrate: "128k".to_string(),
+        };
+        let args = audio_args(Some(&audio), Codec::H264, Some(&measured)).join(" ");
+        assert!(!args.contains("loudnorm"), "{args}");
+        assert!(args.contains("-c:a aac"), "{args}");
+    }
+
+    #[test]
+    fn audio_is_always_48khz() {
+        for normalize in [true, false] {
+            let audio = AudioSettings {
+                normalize,
+                bitrate: "128k".to_string(),
+            };
+            for codec in [Codec::H264, Codec::Vp9] {
+                let args = audio_args(Some(&audio), codec, None).join(" ");
+                assert!(args.contains("-ar 48000"), "{args}");
+            }
+        }
     }
 
     #[test]
