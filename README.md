@@ -6,10 +6,18 @@ Create multiple widths and transcodings, capture poster images, generate subtitl
 
 ![Boxset CLI demo](https://github.com/user-attachments/assets/6a036ccf-84a8-4467-a357-415841319b2d)
 
-> 🚧 **Work in progress**<br/>
+> 🚧 **Work in progress**
+>
 > Boxset is a newly-released tool and is still in development.
-> Expect bugs and breaking changes until the project reaches `1.0`.</br>
+> Expect bugs and breaking changes until the project reaches `1.0`.
+>
 > Feedback, issues and contributions welcome!
+>
+> Coming soon-ish...
+> * `boxset html` – outputs suggested HTML (`<video>`, `<source>`-es, etc) for the last run's output
+> * Post-run analysis of outputs and suggestions for improving compression
+> * Better audio handling (`quality` doesn't really tune audio at the moment!)
+> * GIF outputs
 
 ## What it does
 
