@@ -75,8 +75,6 @@ pub enum TaskWork {
     Subtitles {
         output: Output,
         model: TranscriptionModel,
-        /// Transcription covers the trimmed window, so cue timings line up
-        /// with the renditions rather than the source.
         trim: Option<TimeRange>,
         extra_args: Vec<String>,
     },

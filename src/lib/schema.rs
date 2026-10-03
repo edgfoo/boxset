@@ -157,8 +157,6 @@ fn table(key: &str, fields: &'static [Field]) -> Value {
     }
 }
 
-/// Pretty-printed with a trailing newline, so the committed `schema.json`
-/// compares byte for byte against what a test regenerates.
 pub fn to_json_text() -> String {
     let mut text = serde_json::to_string_pretty(&generate()).expect("schema serialises");
     text.push('\n');
@@ -197,8 +195,6 @@ mod tests {
         );
     }
 
-    /// `Toggle::Off` holds a `bool`, so `audio = true` parses and then means
-    /// nothing. The schema takes only the half that does something.
     #[test]
     fn a_toggle_admits_false_but_not_true() {
         let audio = target_properties()["audio"].clone();

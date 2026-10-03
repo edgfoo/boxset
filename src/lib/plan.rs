@@ -61,7 +61,7 @@ pub struct Plan {
     pub tasks: Vec<Task>,
 }
 
-/// `settings` and `probes` are parallel: `probes[i]` is the source probe for
+/// `settings` and `probes` are parallel. `probes[i]` is the source probe for
 /// `settings[i]`.
 pub fn plan(settings: &[Settings], probes: &[Arc<Probe>], selection: &Selection) -> Plan {
     let mut tasks = Vec::new();

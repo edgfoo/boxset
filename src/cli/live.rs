@@ -356,8 +356,7 @@ impl LiveReporter {
         lines
     }
 
-    /// One explanation per distinct cause: the same cause on two rows prints
-    /// once.
+    /// One explanation per distinct cause: the same cause on two rows prints once.
     fn error_lines(&self, group: &Group) -> Vec<String> {
         let mut lines = Vec::new();
         let mut seen: Vec<String> = Vec::new();
@@ -456,6 +455,7 @@ impl Reporter for LiveReporter {
         };
 
         let row = &mut self.groups[group].rows[row];
+
         // ffmpeg reports often; only a changed whole percent is worth a redraw.
         if (overall * 100.0) as u32 == (row.progress * 100.0) as u32 {
             return;

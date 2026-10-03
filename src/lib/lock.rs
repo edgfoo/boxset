@@ -71,7 +71,6 @@ impl Lockfile {
     }
 }
 
-/// Hash of a file's bytes. `None` when the file can't be read.
 pub fn hash_file(path: &Path) -> Option<String> {
     let mut file = std::fs::File::open(path).ok()?;
     let mut hasher = Sha256::new();
@@ -86,8 +85,6 @@ pub fn hash_file(path: &Path) -> Option<String> {
     Some(hex(&hasher.finalize()))
 }
 
-/// Hashes the task's intent, not the command it ran, so two encodes match
-/// only when their settings do.
 pub fn args_hash(work: &TaskWork) -> String {
     let mut hasher = Sha256::new();
     hasher.update(describe_work(work).as_bytes());
@@ -105,8 +102,6 @@ fn describe_trim(trim: Option<crate::settings::TimeRange>) -> String {
         .unwrap_or_else(|| "none".to_string())
 }
 
-/// A stable rendering of a `TaskWork`. Written out by hand rather than derived
-/// from `Debug`, whose output is explicitly not a stable format.
 fn describe_work(work: &TaskWork) -> String {
     match work {
         TaskWork::Rendition {
@@ -252,8 +247,6 @@ mod tests {
         assert_ne!(args_hash(&rendition(480)), args_hash(&crf_20));
     }
 
-    /// A poster and a rendition of the same width are different work, and the
-    /// hash has to say so even though both are "480".
     #[test]
     fn task_kinds_do_not_collide() {
         let poster = TaskWork::Poster {
@@ -280,8 +273,6 @@ mod tests {
         assert_ne!(with(true), with(false));
     }
 
-    /// A crop is part of what produced an output, so two otherwise identical
-    /// renditions differing only in anchor must not share an entry.
     #[test]
     fn crop_anchor_is_part_of_the_hash() {
         let mut centred = rendition(480);
@@ -301,8 +292,6 @@ mod tests {
         assert_ne!(args_hash(&centred), args_hash(&topped));
     }
 
-    /// A filtered run rebuilds one output and skips another. The skipped one
-    /// keeps its entry, while an output the config has dropped loses its.
     #[test]
     fn absorb_keeps_skipped_outputs_and_drops_unnamed_ones() {
         let (built, skipped, gone) = (
@@ -340,8 +329,6 @@ mod tests {
         assert_eq!(read.outputs, lock.outputs);
     }
 
-    /// A lockfile from a future version, or one someone edited badly, must not
-    /// fail a build.
     #[test]
     fn a_corrupt_lockfile_reads_as_empty() {
         let dir = std::env::temp_dir().join("boxset-lock-corrupt-test");

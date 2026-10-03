@@ -97,8 +97,7 @@ pub struct SubtitleSettings {
 const RUNG_WIDTHS: [u32; 5] = [480, 640, 960, 1280, 1920];
 
 /// The widths to encode for a source this wide, widest first, dropping any
-/// rung less than twice as narrow as the last one kept: two rungs close in
-/// width cost an encode each and give the page almost the same file.
+/// rung less than twice as narrow as the last one kept.
 pub fn derive_ladder(post_crop_width: u32) -> Vec<u32> {
     let candidates: Vec<u32> = RUNG_WIDTHS
         .into_iter()
@@ -120,9 +119,7 @@ pub fn derive_ladder(post_crop_width: u32) -> Vec<u32> {
     kept
 }
 
-/// Fixed per codec: `quality` varies compression, not effort. libvpx cpu-used
-/// above 3 disables rate-distortion optimisation, so those values encode worse
-/// at every CRF rather than merely faster.
+/// Fixed per codec. `quality` varies compression, not effort.
 fn effort(codec: Codec) -> &'static str {
     match codec {
         Codec::H264 | Codec::H265 => "veryslow",
@@ -195,7 +192,6 @@ mod tests {
         }
     }
 
-    /// A source narrower than every rung still gets one, at its own width.
     #[test]
     fn a_source_below_the_smallest_rung_gets_itself() {
         assert_eq!(derive_ladder(400), vec![400]);

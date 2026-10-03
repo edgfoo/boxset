@@ -73,8 +73,6 @@ pub fn print_schema() {
     print!("{}", boxset::schema::to_json_text());
 }
 
-/// How this invocation runs, as opposed to what its targets are: flags win
-/// over the config file's project-wide keys.
 struct RunSettings {
     out_dir: PathBuf,
     jobs: usize,
@@ -195,7 +193,6 @@ fn missing_config_note(given: Option<&Path>, path: &Path) -> style::Note {
     }
 }
 
-/// The shared pipeline both entry paths run.
 fn run(
     configs: Vec<TargetConfig>,
     defaults: &TargetConfig,
@@ -354,8 +351,7 @@ fn install_interrupt_handler() -> boxset::Cancel {
     let handler_cancel = cancel.clone();
 
     let _ = ctrlc::set_handler(move || {
-        // A second ctrl-C quits immediately, leaving temp files behind. Someone
-        // pressing it twice wants out now.
+        // A second ctrl-C quits immediately, leaving temp files behind
         if handler_cancel.is_cancelled() {
             std::process::exit(130);
         }
@@ -365,8 +361,7 @@ fn install_interrupt_handler() -> boxset::Cancel {
     cancel
 }
 
-/// Whether to go ahead. Nothing to answer the prompt outside a terminal, so
-/// a non-interactive run proceeds rather than blocking forever.
+/// "Proceed?" prompt. In non-interactive environments, this returns true automatically.
 fn confirm(yes: bool) -> anyhow::Result<bool> {
     if yes {
         return Ok(true);
@@ -414,9 +409,7 @@ fn hash_sources(plan: &boxset::Plan) -> HashMap<PathBuf, String> {
     hashes
 }
 
-/// Writes an entry per produced output, beside `boxset.toml`. Entries for
-/// outputs outside `all_outputs` are dropped, so a target the config no longer
-/// describes leaves nothing behind.
+/// Writes an entry per produced output, beside `boxset.toml`.
 fn write_lockfile(
     plan: &boxset::Plan,
     all_outputs: &[PathBuf],
@@ -461,7 +454,7 @@ fn write_lockfile(
             severity: Severity::Warning,
             locator: None,
             message: format!("couldn't write {}: {e}", boxset::lock::LOCK_FILE),
-            detail: vec!["Your outputs are fine; boxset will re-encode them next run.".to_string()],
+            detail: vec!["Your outputs are fine. Boxset will re-encode them next run.".to_string()],
             cause: None,
         }]);
     }

@@ -35,7 +35,6 @@ pub fn resolve_against(base: &Path, path: &Path) -> PathBuf {
     }
 }
 
-/// Purely textual, so a `..` that would step out of a symlinked directory is left alone.
 pub fn fold_dot_segments(path: &Path) -> PathBuf {
     let mut out: Vec<Component> = Vec::new();
     for part in path.components() {
@@ -54,9 +53,8 @@ pub fn fold_dot_segments(path: &Path) -> PathBuf {
 }
 
 impl Config {
-    /// Re-bases every path the file contains onto `dir`, the directory the
-    /// config was read from, so a config describes the same build wherever
-    /// boxset is run from.
+    /// Re-bases every path the file contains onto `dir`, the directory the config was read from, so
+    /// a config describes the same build wherever boxset is run from.
     pub fn rebase(&mut self, dir: &Path) {
         self.out_dir = resolve_against(dir, &self.out_dir);
         for target in &mut self.targets {
@@ -75,7 +73,6 @@ impl Config {
     }
 }
 
-/// One `[[target]]` entry, or the flags of a single-shot run
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct TargetConfig {
     pub src: Option<PathBuf>,
@@ -228,7 +225,7 @@ pub enum Anchor {
 
 impl Anchor {
     /// Top-left corner of a `w`×`h` window in a `sw`×`sh` source. An anchor
-    /// only bites on the axis the crop shrinks; the other centres.
+    /// only cuts on the axis the crop shrinks; the other centres.
     pub fn offset(self, sw: u64, sh: u64, w: u64, h: u64) -> (u64, u64) {
         let centre_x = (sw - w) / 2;
         let centre_y = (sh - h) / 2;
@@ -409,8 +406,6 @@ pub fn model_names() -> String {
         .join(", ")
 }
 
-/// Per-codec overrides: an inline table, since `[target.h264]` in a TOML array
-/// of tables binds to the last element.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct CodecOverrides {
     pub crf: Option<u32>,
@@ -552,8 +547,6 @@ mod tests {
         );
     }
 
-    /// A `..` with nothing to cancel has to survive, or a path pointing above
-    /// the config's directory would silently become one inside it.
     #[test]
     fn a_leading_parent_segment_is_kept() {
         assert_eq!(

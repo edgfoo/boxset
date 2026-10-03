@@ -1,5 +1,3 @@
-//! boxset: prepare video for the web.
-
 #[path = "lib/cancel.rs"]
 pub mod cancel;
 #[path = "lib/command.rs"]

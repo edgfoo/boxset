@@ -82,7 +82,6 @@ pub fn bold_green(text: &str) -> String {
     wrap(BOLD_GREEN, text)
 }
 
-/// Brighter than `dim`, for values beside dimmed labels.
 pub fn gray(text: &str) -> String {
     wrap(GRAY, text)
 }
@@ -191,8 +190,6 @@ pub fn icon(kind: TaskKind) -> String {
     }
 }
 
-/// The subtitle icon, dimmed: the model fetch is work towards the subtitles
-/// rather than an output of its own.
 pub fn dim_subtitles_icon() -> String {
     wrap(DIM_CYAN, SUBTITLES)
 }

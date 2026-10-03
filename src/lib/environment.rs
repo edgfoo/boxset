@@ -26,8 +26,6 @@ pub enum Requirement {
     Model(TranscriptionModel),
 }
 
-/// Inspect only: interrogates ffmpeg and reads the model cache, but writes
-/// nothing and downloads nothing, so a dry run can call it freely.
 pub fn check_environment(plan: &Plan) -> Vec<Requirement> {
     let mut requirements = Vec::new();
 
@@ -168,8 +166,6 @@ fn available_encoders(ffmpeg: &Path) -> Option<HashSet<String>> {
     (!names.is_empty()).then_some(names)
 }
 
-/// Fails on the requirements boxset can't acquire for itself. Downloads
-/// nothing, so a dry run can call it.
 pub fn ensure_available(requirements: &[Requirement]) -> Result<(), BoxsetError> {
     if let Some(Requirement::Tool(tool)) = requirements
         .iter()
@@ -235,16 +231,16 @@ pub fn ensure_met(
     Ok(())
 }
 
-/// Resolves a tool's path: a `bin/` directory next to boxset's own
-/// executable first, falling back to `PATH`.
+/// Resolves a tool's path: a `bin/` directory next to boxset's own executable first, falling back
+/// to `PATH`.
 pub fn resolve_tool_path(tool: Tool) -> Option<PathBuf> {
     let name = match tool {
         Tool::Ffmpeg => "ffmpeg",
         Tool::Ffprobe => "ffprobe",
     };
 
-    // Homebrew symlinks bin/boxset to libexec/boxset, so canonicalize to
-    // resolve these links to absolute paths
+    // Homebrew symlinks bin/boxset to libexec/boxset, so canonicalize to resolve these links to
+    // absolute paths
     if let Ok(exe) = std::env::current_exe()
         && let Ok(exe) = exe.canonicalize()
         && let Some(dir) = exe.parent()

@@ -356,9 +356,10 @@ fn print_groups(groups: &[Group]) {
                 true => row.name.to_string(),
                 false => format!("{} {}", row.name, dim(row.value_name)),
             };
+
             for (index, note) in row.description.iter().enumerate() {
-                // The name and default sit on the first line. Description
-                // can break over multiple lines.
+                // The name and default sit on the first line.
+                // Description can break over multiple lines.
                 let (name, default) = match index {
                     0 => (name.as_str(), row.default_note),
                     _ => ("", ""),

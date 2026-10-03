@@ -83,8 +83,7 @@ pub enum FetchError {
     Request(#[source] Box<ureq::Error>),
     #[error("io error during download")]
     Io(#[from] std::io::Error),
-    /// A model whose bytes don't match the recorded digest is a failed
-    /// download, never a cache entry to be used anyway.
+    /// A model whose bytes don't match the recorded digest is a failed download.
     #[error("checksum mismatch: expected {expected}, got {actual}")]
     ChecksumMismatch { expected: String, actual: String },
 }
@@ -99,7 +98,6 @@ impl From<ureq::Error> for FetchError {
 #[error("ffmpeg failed: {kind:?}")]
 pub struct FfmpegError {
     pub kind: FfmpegErrorKind,
-    /// Raw stderr, kept whole so a client can surface it unabridged.
     pub stderr: String,
 }
 
@@ -114,8 +112,7 @@ pub enum FfmpegErrorKind {
 }
 
 /// Matches the line naming the cause, never ffmpeg's final summary line:
-/// distinct causes share the same "Invalid argument" ending. Every pattern
-/// here comes from a real captured failure, never a guess.
+/// distinct causes share the same "Invalid argument" ending.
 pub fn classify_ffmpeg_failure(stderr: &str) -> FfmpegErrorKind {
     if let Some(encoder) = between(stderr, "Unknown encoder '", "'") {
         return FfmpegErrorKind::EncoderMissing { encoder };
@@ -193,8 +190,6 @@ mod tests {
         );
     }
 
-    /// bad-filter and no-such-stream both end "Invalid argument"; a classifier
-    /// reading the last line would collapse them.
     #[test]
     fn causes_sharing_a_summary_line_stay_distinct() {
         assert_ne!(

@@ -68,8 +68,6 @@ pub fn size(bytes: Option<u64>) -> String {
 mod tests {
     use super::*;
 
-    /// Seconds below a minute, clock-shaped above it. The minute is the
-    /// switchover, so a duration either side of it must read differently.
     #[test]
     fn elapsed_switches_shape_at_a_minute() {
         assert_eq!(elapsed(Duration::from_secs(59)), "59.0s");

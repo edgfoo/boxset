@@ -11,7 +11,7 @@ use crate::settings::{
 use crate::sources::Probe;
 
 /// Precedence, lowest to highest: defaults in code, quality expansion,
-/// specified fields — applied field by field.
+/// specified fields.
 pub fn resolve(config: &TargetConfig, probe: &Probe, out_dir: &std::path::Path) -> Settings {
     let quality = config.quality.unwrap_or(Quality::Balanced);
     let codecs = config
@@ -188,8 +188,8 @@ fn resolve_poster(field: Option<&PosterField>) -> Option<PosterSettings> {
     }
 }
 
-/// Parakeet gives us word-level timestamps, letting us apply our nice
-/// cue splitting heuristics.
+/// Choose Parakeet since it gives us word-level timestamps, letting us apply
+/// our nice cue splitting logic.
 const DEFAULT_MODEL: TranscriptionModel =
     TranscriptionModel::Parakeet(config::ParakeetTier::Multilingual);
 
@@ -261,8 +261,6 @@ mod tests {
         assert!(settings.widths.iter().all(|&w| w <= 606));
     }
 
-    /// The ladder has to plan against the width the crop filter really
-    /// produces, or a rung lands a pixel wider than the frame and upscales.
     #[test]
     fn post_crop_width_matches_the_crop_filter() {
         let mut cfg = config();

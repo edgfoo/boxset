@@ -51,10 +51,9 @@ enum WorkerMessage {
 }
 
 /// Fills incrementally: `request` starts work and returns immediately,
-/// `absorb`/`wait` drain results as they land. Owns a fixed pool of worker
-/// threads for its lifetime, so one path never spawns one thread — probing a
-/// large directory with unbounded threads thrashes the disk instead of
-/// saturating it.
+/// `absorb`/`wait` drain results as they land.
+///
+/// Owns a fixed pool of worker threads for its lifetime to avoid over-working.
 pub struct Sources {
     states: HashMap<PathBuf, SourceState>,
     work_tx: Sender<WorkerMessage>,

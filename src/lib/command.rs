@@ -36,8 +36,8 @@ pub fn stages(codec: Codec) -> &'static [&'static str] {
     }
 }
 
-/// Pass 1 analyses and finishes far sooner than pass 2, so an even split would
-/// look like a stall right after it.
+/// Estimate that pass 1 takes roughly 15% of the VP9 encoding work, pass 2
+/// does the bulk of it, 85%.
 const PASS_1_SHARE: f32 = 0.15;
 
 pub fn overall_progress(codec: Codec, stage_index: u32, stage_done: f32) -> f32 {
@@ -58,7 +58,6 @@ fn crop_filter(crop: Crop, probe: &Probe) -> String {
     format!("crop={w}:{h}:{x}:{y}")
 }
 
-/// Post-crop dimensions, which the ladder derives from.
 pub fn cropped_size(crop: Option<Crop>, probe: &Probe) -> (u32, u32) {
     let Some(crop) = crop else {
         return (probe.width, probe.height);
@@ -206,8 +205,7 @@ pub struct RenditionArgs {
 
 const KEYFRAME_SECONDS: f64 = 4.0;
 
-/// `None` when the clip fits in one interval anyway, or the frame rate is
-/// unknown.
+/// `None` when the clip fits in one interval anyway, or the frame rate is unknown.
 fn keyframe_interval(fps: Option<Fps>, trim: Option<TimeRange>, probe: &Probe) -> Option<u32> {
     let rate = match fps {
         Some(fps) => fps.rate(),
@@ -364,7 +362,7 @@ pub fn poster_args(
     probe: &Probe,
 ) -> Vec<String> {
     let mut args = vec!["-y".to_string()];
-    // Seeking before -i is the fast path; `at` is a timestamp into the source.
+    // Seeking before -i is the fast path. `at` is a timestamp into the source.
     args.extend(["-ss".to_string(), format!("{}", at.0)]);
     args.extend(["-i".to_string(), src.to_string_lossy().to_string()]);
     args.extend(["-vf".to_string(), video_filters(width, crop, None, probe)]);
@@ -379,13 +377,11 @@ pub fn loudness_stages() -> &'static [&'static str] {
     &["measuring loudness"]
 }
 
-/// Extraction, then inference. Both are long enough on a real source to be
-/// worth naming separately.
 pub fn subtitle_stages() -> &'static [&'static str] {
     &["extracting audio", "transcribing"]
 }
 
-/// 16kHz mono PCM, the input format whisper.cpp requires. `-f s16le` forces
+/// 16kHz mono PCM, the input format transcribe.cpp requires. `-f s16le` forces
 /// headerless output: the samples are read back raw, so a WAV header would
 /// be decoded as audio.
 pub fn audio_extract_args(src: &Path, tmp: &Path, trim: Option<TimeRange>) -> Vec<String> {
@@ -419,8 +415,6 @@ mod tests {
         }
     }
 
-    /// A clip fitting in one interval already has only its opening keyframe,
-    /// so forcing one in would just add bytes.
     #[test]
     fn a_clip_shorter_than_the_interval_gets_none() {
         assert_eq!(keyframe_interval(None, None, &probe((25, 1), 4.0)), None);
@@ -476,8 +470,6 @@ mod tests {
         assert!(!unmeasured.contains("measured_I"));
     }
 
-    /// The interval follows the output: trim sets its length, `--fps` its
-    /// rate, neither of which the source's own figures give.
     #[test]
     fn the_interval_follows_the_output_not_the_source() {
         let trim = Some(TimeRange {

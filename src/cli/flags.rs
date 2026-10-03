@@ -1,6 +1,5 @@
 //! Field flags: one per `TargetConfig` field, table-shaped fields flattened
-//! into one flag per sub-field. On `build` these are an error naming the
-//! field, since only boxset.toml describes multiple targets.
+//! into one flag per sub-field.
 
 use std::path::PathBuf;
 
@@ -143,7 +142,6 @@ fn given_field_flags(fields: &FieldFlags) -> Vec<(&'static str, bool)> {
 }
 
 impl FieldFlags {
-    /// The first field flag given, named as the user spelled it.
     pub fn first_field_flag(&self) -> Option<&'static str> {
         given_field_flags(self)
             .into_iter()
@@ -151,8 +149,6 @@ impl FieldFlags {
             .map(|(flag, _)| flag)
     }
 
-    /// Flags to a `TargetConfig`, so a single-shot run and a config entry
-    /// become the same shape.
     pub fn to_target_config(&self, src: PathBuf) -> Result<TargetConfig, Note> {
         Ok(TargetConfig {
             src: Some(src),
@@ -283,8 +279,6 @@ fn codec_overrides(
     })
 }
 
-/// Whitespace-separated, which is enough for the flags people actually pass
-/// and keeps the shell as the thing that handles quoting.
 fn split_args(raw: &str) -> Vec<String> {
     raw.split_whitespace().map(str::to_string).collect()
 }
@@ -337,8 +331,8 @@ fn parse_anchor(raw: &str) -> Result<Anchor, Note> {
     }
 }
 
-/// `START-END`, either side omittable: `-30` trims only the tail, `5-` only
-/// the head.
+/// `START-END`, either side omittable.
+/// `-30` trims only the tail, `5-` only the head.
 fn parse_trim(raw: &str) -> Result<TimeRange, Note> {
     let Some((start, end)) = raw.split_once('-') else {
         return Err(Note {
@@ -387,8 +381,6 @@ pub fn field_flag_names() -> Vec<&'static str> {
 mod tests {
     use super::*;
 
-    /// The field table is the list of what a client must express. A flag in it
-    /// that `given_field_flags` misses is one `build` would accept and ignore.
     #[test]
     fn every_target_flag_has_a_predicate() {
         let mut named: Vec<String> = field_flag_names().into_iter().map(str::to_string).collect();

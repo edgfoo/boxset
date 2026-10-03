@@ -4,11 +4,10 @@ use crate::task::TaskKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hint {
-    /// Subtitles were written, and no model transcribes perfectly.
+    /// Prompt users to review their subtitles, "AI makes mistakes"
     ReviewSubtitles,
 }
 
-/// The hints a run has collected so far, in the order they first applied.
 #[derive(Debug, Default)]
 pub struct Hints {
     hints: Vec<Hint>,
@@ -19,8 +18,7 @@ impl Hints {
         Self::default()
     }
 
-    /// A hint that applies to several outputs is only held once, so a target
-    /// with a rendition each per width doesn't repeat it.
+    /// A hint that applies to several outputs is only counted once
     pub fn observe_completed_output(&mut self, kind: TaskKind) {
         for hint in hints_for_output(kind) {
             if !self.hints.contains(&hint) {
@@ -65,7 +63,6 @@ mod tests {
         assert_eq!(hints.as_slice(), [Hint::ReviewSubtitles]);
     }
 
-    /// Two targets each with subtitles are still one thing to go and review.
     #[test]
     fn a_hint_applying_to_two_outputs_is_held_once() {
         let mut hints = Hints::new();

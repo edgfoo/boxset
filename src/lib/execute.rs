@@ -461,8 +461,6 @@ fn run_ffmpeg_task(
     Ok(())
 }
 
-/// How much of the source a task encodes, for turning ffmpeg's progress
-/// output into a fraction.
 fn stage_duration(task: &Task) -> f64 {
     let full = task.probe.duration_secs;
     let TaskWork::Rendition { trim: Some(t), .. } = &task.work else {
@@ -601,8 +599,6 @@ fn run_ffmpeg(
         text
     });
 
-    // The caller deletes the temp files once this returns, so ffmpeg has to be
-    // gone, not just signalled.
     let status = match child.wait() {
         Ok(status) => status,
         Err(e) => {

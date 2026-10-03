@@ -100,8 +100,6 @@ pub fn codec_suffix(codec: Codec) -> &'static str {
 mod tests {
     use super::*;
 
-    /// vp9 is alone in webm, so it never takes the suffix its mp4-family
-    /// siblings take on once there is more than one of them.
     #[test]
     fn a_second_mp4_family_codec_suffixes_only_those() {
         let naming = Naming {
@@ -125,8 +123,6 @@ mod tests {
         );
     }
 
-    /// `--out-dir .` shouldn't leave a `./` on every path recorded in the
-    /// lockfile and printed in the plan.
     #[test]
     fn the_current_directory_leaves_no_prefix_on_a_path() {
         let naming = Naming {

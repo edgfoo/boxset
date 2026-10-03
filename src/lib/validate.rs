@@ -9,8 +9,6 @@ use crate::outputs::{self, Naming};
 use crate::problem::{Problem, ProblemKind, Severity};
 use crate::sources::{ProbeErrorKind, SourceLookup, SourceState};
 
-/// Never short-circuits: one bad field must not hide the rest.
-///
 /// `configs` are the targets with defaults already applied. `top_level` is the
 /// config file's leftover keys.
 pub fn validate(
@@ -267,7 +265,7 @@ fn check_unknown_fields(index: usize, config: &TargetConfig, problems: &mut Vec<
     }
 }
 
-/// `None` when the source hasn't been probed, so no ladder can be derived.
+/// `None` when the source hasn't been probed, where no ladder can be derived.
 fn output_paths(
     config: &TargetConfig,
     out_dir: &Path,
@@ -278,8 +276,6 @@ fn output_paths(
         return None;
     };
 
-    // A malformed ratio gives no crop, so the ladder is derived from the
-    // uncropped width. The ratio is reported by check_malformed_values.
     let crop = config
         .crop
         .as_ref()
@@ -397,8 +393,6 @@ mod tests {
         }
     }
 
-    /// A default the two derivations disagree about would have the checker
-    /// reporting on files no run writes.
     #[test]
     fn the_paths_checked_for_collisions_are_the_paths_the_build_writes() {
         let case = |label, adjust: &dyn Fn(&mut TargetConfig)| {
@@ -571,7 +565,6 @@ mod tests {
         assert_eq!(fields, [Some("src"), Some("name")]);
     }
 
-    /// One problem per target, not one per rung.
     #[test]
     fn widths_wider_than_the_source_warn_once() {
         let mut cfg = config("video.mp4");
@@ -620,8 +613,6 @@ mod tests {
         }
     }
 
-    /// Resolution panics on these rather than returning a Result, so the
-    /// report has to catch them first.
     #[test]
     fn malformed_values_are_errors_against_their_field() {
         let mut cfg = config("video.mp4");
@@ -656,8 +647,6 @@ mod tests {
         BTreeMap::from([(key.to_string(), toml::Value::String("high".into()))])
     }
 
-    /// A target field at the top level applies to nothing, so it is named as
-    /// that rather than as an unknown key.
     #[test]
     fn target_field_at_top_level_is_named_as_such() {
         let problems = validate(
@@ -699,8 +688,6 @@ mod tests {
         assert_eq!(suggestion.as_deref(), Some("out_dir"));
     }
 
-    /// The project-wide keys deserialise into their own fields, so they never
-    /// reach the leftover map the check reads.
     #[test]
     fn project_wide_keys_are_not_reported() {
         let config: crate::config::Config =
