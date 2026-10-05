@@ -13,7 +13,9 @@ use crate::sources::Probe;
 /// Precedence, lowest to highest: defaults in code, quality expansion,
 /// specified fields.
 pub fn resolve(config: &TargetConfig, probe: &Probe, out_dir: &std::path::Path) -> Settings {
-    let quality = config.quality.unwrap_or(Quality::Balanced);
+    let quality = config.quality.unwrap_or_default();
+    let video_quality = quality.video().unwrap_or(Quality::Balanced);
+    let audio_quality = quality.audio().unwrap_or(Quality::Balanced);
     let codecs = config
         .codecs
         .clone()
@@ -29,7 +31,7 @@ pub fn resolve(config: &TargetConfig, probe: &Probe, out_dir: &std::path::Path) 
         .clone()
         .unwrap_or_else(|| derive_ladder(post_crop_width));
 
-    let audio = resolve_audio(config.audio.as_ref(), probe.has_audio);
+    let audio = resolve_audio(config.audio.as_ref(), probe.has_audio, audio_quality);
     let poster = resolve_poster(config.poster.as_ref());
     let subtitles = resolve_subtitles(config.subtitles.as_ref());
 
@@ -37,11 +39,10 @@ pub fn resolve(config: &TargetConfig, probe: &Probe, out_dir: &std::path::Path) 
         src: config.src.clone().expect("validated: src is present"),
         name: config.name.clone(),
         out_dir: out_dir.to_path_buf(),
-        quality,
-        h264: resolve_codec_options(quality, Codec::H264, config.h264.as_ref(), &codecs),
-        h265: resolve_codec_options(quality, Codec::H265, config.h265.as_ref(), &codecs),
-        vp9: resolve_codec_options(quality, Codec::Vp9, config.vp9.as_ref(), &codecs),
-        av1: resolve_codec_options(quality, Codec::Av1, config.av1.as_ref(), &codecs),
+        h264: resolve_codec_options(video_quality, Codec::H264, config.h264.as_ref(), &codecs),
+        h265: resolve_codec_options(video_quality, Codec::H265, config.h265.as_ref(), &codecs),
+        vp9: resolve_codec_options(video_quality, Codec::Vp9, config.vp9.as_ref(), &codecs),
+        av1: resolve_codec_options(video_quality, Codec::Av1, config.av1.as_ref(), &codecs),
         codecs,
         crop,
         widths,
@@ -151,26 +152,25 @@ fn non_negative(secs: f64) -> Option<f64> {
     (secs.is_finite() && secs >= 0.0).then_some(secs)
 }
 
-fn resolve_audio(field: Option<&AudioField>, has_audio: bool) -> Option<AudioSettings> {
+fn resolve_audio(
+    field: Option<&AudioField>,
+    has_audio: bool,
+    quality: Quality,
+) -> Option<AudioSettings> {
     match field {
         Some(AudioField::Off(false)) => None,
         Some(AudioField::Off(true)) | None if !has_audio => None,
         Some(AudioField::Off(true)) | None => Some(AudioSettings {
             normalize: true,
-            bitrate: default_audio_bitrate().to_string(),
+            bitrate: None,
+            quality,
         }),
         Some(AudioField::Settings(settings)) => Some(AudioSettings {
             normalize: settings.normalize.unwrap_or(true),
-            bitrate: settings
-                .bitrate
-                .clone()
-                .unwrap_or_else(|| default_audio_bitrate().to_string()),
+            bitrate: settings.bitrate.clone(),
+            quality,
         }),
     }
-}
-
-fn default_audio_bitrate() -> &'static str {
-    "128k"
 }
 
 /// `None` means `poster = false`. `at: None` means the default: the first
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn normalisation_is_the_default() {
-        let normalize = |field| resolve_audio(field, true).map(|a| a.normalize);
+        let normalize = |field| resolve_audio(field, true, Quality::Balanced).map(|a| a.normalize);
         assert_eq!(normalize(None), Some(true));
 
         let off = crate::config::AudioField::Settings(crate::config::AudioSettings {
@@ -243,7 +243,7 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(normalize(Some(&off)), Some(false));
-        assert_eq!(resolve_audio(None, false), None);
+        assert_eq!(resolve_audio(None, false, Quality::Balanced), None);
     }
 
     fn out_dir() -> PathBuf {

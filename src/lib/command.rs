@@ -186,7 +186,7 @@ fn audio_args(
         "-c:a".to_string(),
         audio_encoder(codec).to_string(),
         "-b:a".to_string(),
-        audio.bitrate.clone(),
+        audio.encode_bitrate().to_string(),
         // The loudnorm step outputs 192kHz audio. We need to downsample this
         // to 48kHz. If we didn't, aac would try to match the 192kHz but hit its
         // limit of 96kHz, which is way beyond human perception and simply wastes bits.
@@ -412,6 +412,7 @@ pub fn audio_extract_args(src: &Path, tmp: &Path, trim: Option<TimeRange>) -> Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Quality;
 
     fn probe(frame_rate: (u32, u32), duration_secs: f64) -> Probe {
         Probe {
@@ -461,7 +462,8 @@ mod tests {
 
         let audio = AudioSettings {
             normalize: true,
-            bitrate: "128k".to_string(),
+            bitrate: None,
+            quality: Quality::Balanced,
         };
         let args = audio_args(Some(&audio), Codec::H264, Some(&measured)).join(" ");
         assert!(!args.contains("loudnorm"), "{args}");
@@ -473,7 +475,8 @@ mod tests {
         for normalize in [true, false] {
             let audio = AudioSettings {
                 normalize,
-                bitrate: "128k".to_string(),
+                bitrate: None,
+                quality: Quality::Balanced,
             };
             for codec in [Codec::H264, Codec::Vp9] {
                 let args = audio_args(Some(&audio), codec, None).join(" ");
@@ -483,10 +486,29 @@ mod tests {
     }
 
     #[test]
+    fn the_tier_sets_the_bitrate_unless_one_is_given() {
+        let bitrate = |quality, bitrate: Option<&str>| {
+            let audio = AudioSettings {
+                normalize: false,
+                bitrate: bitrate.map(str::to_string),
+                quality,
+            };
+            [Codec::H264, Codec::Vp9].map(|codec| audio_args(Some(&audio), codec, None).join(" "))
+        };
+        for args in bitrate(Quality::Low, None) {
+            assert!(args.contains("-b:a 64k"), "{args}");
+        }
+        for args in bitrate(Quality::Low, Some("192k")) {
+            assert!(args.contains("-b:a 192k"), "{args}");
+        }
+    }
+
+    #[test]
     fn a_measurement_reaches_the_filter() {
         let audio = AudioSettings {
             normalize: true,
-            bitrate: "128k".to_string(),
+            bitrate: None,
+            quality: Quality::Balanced,
         };
         let measured = LoudnessMeasurement {
             i: -38.88,

@@ -27,6 +27,7 @@ pub fn validate(
         check_src(index, config, sources, &mut problems);
         check_codec_overrides(index, config, &mut problems);
         check_audio_on_silent_source(index, config, sources, &mut problems);
+        check_audio_bitrate_and_tier(index, config, &mut problems);
         check_malformed_values(index, config, &mut problems);
         check_widths_against_source(index, config, sources, &mut problems);
         check_unknown_fields(index, config, &mut problems);
@@ -166,6 +167,25 @@ fn check_audio_on_silent_source(
         problems.push(Problem {
             severity: Severity::Warning,
             kind: ProblemKind::AudioSettingOnSilentSource,
+            target: Some(index),
+            field: Some("audio"),
+        });
+    }
+}
+
+/// A bare `quality` is mostly about video, so only an explicit
+/// `quality.audio` counts as a clash
+fn check_audio_bitrate_and_tier(index: usize, config: &TargetConfig, problems: &mut Vec<Problem>) {
+    let Some(AudioField::Settings(audio)) = &config.audio else {
+        return;
+    };
+
+    let tier_set = config.quality.is_some_and(|q| q.audio.is_some());
+
+    if audio.bitrate.is_some() && tier_set {
+        problems.push(Problem {
+            severity: Severity::Warning,
+            kind: ProblemKind::AudioBitrateOverridesQuality,
             target: Some(index),
             field: Some("audio"),
         });
@@ -361,6 +381,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{Quality, QualityField};
     use crate::sources::Probe;
 
     fn config(src: &str) -> TargetConfig {
@@ -544,6 +565,35 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn a_bitrate_with_an_audio_tier_warns_but_not_with_a_bare_tier() {
+        let warns = |quality: QualityField| {
+            let mut cfg = config("video.mp4");
+            cfg.quality = Some(quality);
+            cfg.audio = Some(AudioField::Settings(crate::config::AudioSettings {
+                bitrate: Some("96k".to_string()),
+                ..Default::default()
+            }));
+            validate(
+                &[cfg],
+                &TargetConfig::default(),
+                &BTreeMap::new(),
+                out_dir(),
+                &HashMap::new(),
+            )
+            .iter()
+            .any(|p| matches!(p.kind, ProblemKind::AudioBitrateOverridesQuality))
+        };
+        assert!(warns(QualityField {
+            audio: Some(Quality::Low),
+            ..Default::default()
+        }));
+        assert!(!warns(QualityField {
+            both: Some(Quality::Low),
+            ..Default::default()
+        }));
     }
 
     #[test]

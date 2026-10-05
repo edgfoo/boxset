@@ -19,7 +19,7 @@
               "properties": {
                 "bitrate": {
                   "$comment": "a bitrate like 128k",
-                  "description": "Audio bitrate, as ffmpeg spells it.",
+                  "description": "Audio bitrate, as ffmpeg spells it. Wins over quality.",
                   "pattern": "^\\d+k$",
                   "type": "string"
                 },
@@ -233,14 +233,44 @@
           "description": "Poster image settings, or false to skip it."
         },
         "quality": {
-          "description": "How hard to compress, trading file size against picture quality.",
-          "enum": [
-            "low",
-            "balanced",
-            "high",
-            "max"
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "balanced",
+                "high",
+                "max"
+              ],
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "audio": {
+                  "description": "Audio tier, trading file size against sound quality. An audio bitrate wins over it.",
+                  "enum": [
+                    "low",
+                    "balanced",
+                    "high",
+                    "max"
+                  ],
+                  "type": "string"
+                },
+                "video": {
+                  "description": "Video tier, trading file size against picture quality.",
+                  "enum": [
+                    "low",
+                    "balanced",
+                    "high",
+                    "max"
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
           ],
-          "type": "string"
+          "description": "How hard to compress video and audio. One tier for both, or a table to set each."
         },
         "src": {
           "description": "The video to prepare, relative to this config.",
@@ -365,7 +395,7 @@
                 "properties": {
                   "bitrate": {
                     "$comment": "a bitrate like 128k",
-                    "description": "Audio bitrate, as ffmpeg spells it.",
+                    "description": "Audio bitrate, as ffmpeg spells it. Wins over quality.",
                     "pattern": "^\\d+k$",
                     "type": "string"
                   },
@@ -579,14 +609,44 @@
             "description": "Poster image settings, or false to skip it."
           },
           "quality": {
-            "description": "How hard to compress, trading file size against picture quality.",
-            "enum": [
-              "low",
-              "balanced",
-              "high",
-              "max"
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "balanced",
+                  "high",
+                  "max"
+                ],
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "audio": {
+                    "description": "Audio tier, trading file size against sound quality. An audio bitrate wins over it.",
+                    "enum": [
+                      "low",
+                      "balanced",
+                      "high",
+                      "max"
+                    ],
+                    "type": "string"
+                  },
+                  "video": {
+                    "description": "Video tier, trading file size against picture quality.",
+                    "enum": [
+                      "low",
+                      "balanced",
+                      "high",
+                      "max"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
             ],
-            "type": "string"
+            "description": "How hard to compress video and audio. One tier for both, or a table to set each."
           },
           "src": {
             "description": "The video to prepare, relative to this config.",

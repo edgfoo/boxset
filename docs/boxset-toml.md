@@ -104,20 +104,41 @@ selected. The default `h264` and `vp9` pair needs none, since vp9 is `.webm`.
 ### quality
 
 > **Default:** `"balanced"`<br/>
-> **Values:** `"low"`, `"balanced"`, `"high"`, `"max"`
+> **Values:** `"low"`, `"balanced"`, `"high"`, `"max"`; `{ audio = <quality>, video = <quality> }`
 
-Controls how compressed the video outputs are.
+Controls how compressed the video and audio become.
 
 ```toml
 quality = "low"
 ```
 
-Each tier sets a codec-specific CRF, tuned so each transcoding will have roughly the same level of quality.
+Audio and video quality can also be set individually, like so. In this form, either key defaults
+to `"balanced"` if omitted.
+
+```toml
+quality = { video = "high", audio = "low" }
+```
+
+Video quality maps to a codec-specific [CRF](https://slhck.info/video/2017/02/24/crf-guide.html). Audio quality maps to a specific [bitrate](https://www.adobe.com/uk/creativecloud/video/discover/audio-bitrate.html).
+
+| Tier       | `h264` | `h265` | `vp9` | `av1` | Audio  |
+| ---------- | ------ | ------ | ----- | ----- | ------ |
+| `low`      | 30     | 33     | 47    | 48    | `64k`  |
+| `balanced` | 26     | 29     | 42    | 42    | `96k`  |
+| `high`     | 23     | 26     | 34    | 34    | `128k` |
+| `max`      | 20     | 23     | 29    | 28    | `160k` |
+
+These CRF and bitrate values can be set manually via the [`crf`](#crf) and [`audio.bitrate`](#audio) options.
 
 > [!TIP]
-> Use `low` for videos that need to load quickly or where detail isn't important.
+> Choose `low` to maximise loading times in the browser.
 >
-> Use `high` or `max` when video quality is more important than load performance.
+> `low` quality audio and video tends to be 20-40% smaller than `balanced`.
+> `high` is around 40% larger than `balanced`. `max` is around double the size of `balanced`.
+
+> [!TIP]
+> Audio is a large share of small outputs: about a quarter of a 480px MP4, and half of a 480px WebM.
+> Use `quality = { audio = "low" }` for speech, reserve `high` or `max` for complex audio or music.
 
 ### codecs
 
@@ -225,7 +246,7 @@ fps = "25"
 
 ### audio
 
-> **Default:** `{ normalize = true, bitrate: "128k" }` for videos with audio
+> **Default:** `{ normalize = true }` for videos with audio
 
 Audio settings, or `false` to drop the track.
 
@@ -236,7 +257,8 @@ audio = { normalize = false, bitrate = "96k" }
 
 `normalize` evens out loudness across the track. This is on by default.
 
-`bitrate` is the audio bitrate ([as ffmpeg spells it](https://ffmpeg.org/ffmpeg-codecs.html#Codec-Options)). `128k` is the default, if unset.
+`bitrate` is the audio bitrate ([as ffmpeg spells it](https://ffmpeg.org/ffmpeg-codecs.html#Codec-Options)).
+If unset, the [audio quality tier](#quality) picks it.
 
 The audio track is always re-encoded, it's never copied. `aac` is used for MP4-family videos,
 `libopus` for `vp9`.
@@ -244,13 +266,7 @@ The audio track is always re-encoded, it's never copied. `aac` is used for MP4-f
 A source with no audio track produces no audio. No `audio` option is needed in this case.
 
 > [!TIP]
-> Using lower bitrates (`64k` to `96k`) to reduce output file size where
-> quality isn't a priority, or for simple audio like speech without background noise. <br/>
-> Higher bitrates (`128k` to `192k`) produce crisper sound for more complex audio, but increase file size.
-
-> [!TIP]
-> Consider removing audio altogether. This keeps file sizes low, and lets your video autoplay
-> without interaction in the browser.
+> If the video doesn't need sound, remove the audio to keep file sizes low.
 
 ### poster
 
@@ -320,8 +336,7 @@ Read ffmpeg's documentation for detailed information and guidance for each codec
 Every codec takes `crf`, the main compression control. Higher values mean lower quality and more
 compression.
 
-CRF is not comparable between codecs. Each scale is its own, so the same number
-means different things:
+CRF ([constant rate factor](https://slhck.info/video/2017/02/24/crf-guide.html)) is not comparable between codecs. Each scale is its own, so the same number means different things:
 
 | Codec  | Range | `quality = "balanced"` sets |
 | ------ | ----- | --------------------------- |

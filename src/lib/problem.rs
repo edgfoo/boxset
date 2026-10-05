@@ -35,6 +35,8 @@ pub enum ProblemKind {
         path: PathBuf,
     },
     AudioSettingOnSilentSource,
+    /// `audio.bitrate` and `quality.audio` both set. The bitrate wins.
+    AudioBitrateOverridesQuality,
     UnknownField {
         name: String,
         suggestion: Option<String>,

@@ -77,7 +77,7 @@ impl Config {
 pub struct TargetConfig {
     pub src: Option<PathBuf>,
     pub name: Option<String>,
-    pub quality: Option<Quality>,
+    pub quality: Option<QualityField>,
     pub codecs: Option<Vec<Codec>>,
     pub crop: Option<Crop>,
     pub widths: Option<Vec<u32>>,
@@ -103,7 +103,7 @@ impl TargetConfig {
         TargetConfig {
             src: self.src.clone(),
             name: self.name.clone(),
-            quality: self.quality.or(defaults.quality),
+            quality: merge(&self.quality, &defaults.quality),
             codecs: or_clone(&self.codecs, &defaults.codecs),
             crop: or_clone(&self.crop, &defaults.crop),
             widths: or_clone(&self.widths, &defaults.widths),
@@ -148,6 +148,20 @@ fn merge_toggle<T: Mergeable>(
         }
         (Some(field), _) => Some(field.clone()),
         (None, defaults) => defaults.clone(),
+    }
+}
+
+/// A bare `quality` on the target sets both tiers, so it ignores the defaults.
+impl Mergeable for QualityField {
+    fn merge(&self, defaults: &Self) -> Self {
+        if self.both.is_some() {
+            return *self;
+        }
+        QualityField {
+            both: defaults.both,
+            video: self.video.or(defaults.video),
+            audio: self.audio.or(defaults.audio),
+        }
     }
 }
 
@@ -198,6 +212,58 @@ pub enum Quality {
     Max,
 }
 
+/// `quality = "high"` fills `both`. `quality = { video = "high" }` fills
+/// `video` and `audio`, which win over `both`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct QualityField {
+    pub both: Option<Quality>,
+    pub video: Option<Quality>,
+    pub audio: Option<Quality>,
+}
+
+impl QualityField {
+    pub fn video(&self) -> Option<Quality> {
+        self.video.or(self.both)
+    }
+
+    pub fn audio(&self) -> Option<Quality> {
+        self.audio.or(self.both)
+    }
+}
+
+impl<'de> Deserialize<'de> for QualityField {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Split {
+            video: Option<Quality>,
+            audio: Option<Quality>,
+        }
+
+        match toml::Value::deserialize(deserializer)? {
+            value @ toml::Value::String(_) => Ok(QualityField {
+                both: Some(inner(value)?),
+                ..Default::default()
+            }),
+            value @ toml::Value::Table(_) => {
+                let Split { video, audio } = inner(value)?;
+                Ok(QualityField {
+                    both: None,
+                    video,
+                    audio,
+                })
+            }
+            _ => Err(serde::de::Error::custom(
+                "expected a tier like \"high\", or a table like { video = \"high\", audio = \"low\" }",
+            )),
+        }
+    }
+}
+
+fn inner<T: serde::de::DeserializeOwned, E: serde::de::Error>(value: toml::Value) -> Result<T, E> {
+    T::deserialize(value).map_err(|e| E::custom(e.message()))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Codec {
@@ -240,15 +306,32 @@ impl Anchor {
 }
 
 /// An aspect ratio, either bare (centred) or with an anchor.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 pub enum Crop {
     Bare(String),
-    Anchored {
-        ratio: String,
-        #[serde(default)]
-        anchor: Anchor,
-    },
+    Anchored { ratio: String, anchor: Anchor },
+}
+
+impl<'de> Deserialize<'de> for Crop {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Anchored {
+            ratio: String,
+            #[serde(default)]
+            anchor: Anchor,
+        }
+
+        match toml::Value::deserialize(deserializer)? {
+            toml::Value::String(ratio) => Ok(Crop::Bare(ratio)),
+            value @ toml::Value::Table(_) => {
+                let Anchored { ratio, anchor } = inner(value)?;
+                Ok(Crop::Anchored { ratio, anchor })
+            }
+            _ => Err(serde::de::Error::custom(
+                "expected a ratio like \"16:9\", or a table like { ratio = \"9:16\", anchor = \"top\" }",
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -299,11 +382,22 @@ pub fn parse_fps_ratio(text: &str) -> Option<Fps> {
 }
 
 /// `false` to switch off, or a table to configure.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 pub enum Toggle<T> {
     Off(bool),
     Settings(T),
+}
+
+impl<'de, T: serde::de::DeserializeOwned> Deserialize<'de> for Toggle<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match toml::Value::deserialize(deserializer)? {
+            toml::Value::Boolean(on) => Ok(Toggle::Off(on)),
+            value @ toml::Value::Table(_) => Ok(Toggle::Settings(inner(value)?)),
+            _ => Err(serde::de::Error::custom(
+                "expected false, or a table of settings",
+            )),
+        }
+    }
 }
 
 pub type AudioField = Toggle<AudioSettings>;
@@ -470,8 +564,14 @@ mod tests {
             "#,
         );
         let merged = config.merged_targets();
-        assert_eq!(merged[0].quality, Some(Quality::Low));
-        assert_eq!(merged[1].quality, Some(Quality::High));
+        assert_eq!(
+            merged[0].quality.and_then(|q| q.video()),
+            Some(Quality::Low)
+        );
+        assert_eq!(
+            merged[1].quality.and_then(|q| q.video()),
+            Some(Quality::High)
+        );
         assert_eq!(merged[1].widths, Some(vec![400]));
     }
 
@@ -492,6 +592,44 @@ mod tests {
         };
         assert_eq!(audio.normalize, Some(true));
         assert_eq!(audio.bitrate.as_deref(), Some("96k"));
+    }
+
+    fn merged_quality(defaults: &str, target: &str) -> (Option<Quality>, Option<Quality>) {
+        let config = parse(&format!(
+            "[defaults]\nquality = {defaults}\n\n[[target]]\nsrc = \"a.mp4\"\nquality = {target}\n"
+        ));
+        let quality = config.merged_targets()[0].quality.expect("quality is set");
+        (quality.video(), quality.audio())
+    }
+
+    #[test]
+    fn quality_merges_per_field_and_a_bare_tier_sets_both() {
+        use Quality::*;
+        assert_eq!(
+            merged_quality(r#""high""#, r#"{ audio = "low" }"#),
+            (Some(High), Some(Low))
+        );
+        assert_eq!(
+            merged_quality(r#"{ video = "max", audio = "high" }"#, r#""low""#),
+            (Some(Low), Some(Low))
+        );
+    }
+
+    #[test]
+    fn a_bad_value_in_a_many_shaped_field_names_the_actual_problem() {
+        for (line, expected) in [
+            (r#"crop = { ratio = "9:16", anchor = "tpo" }"#, "`tpo`"),
+            (
+                r#"subtitles = { model = "whisper-huge" }"#,
+                r#""whisper-huge""#,
+            ),
+            (r#"quality = { vidoe = "high" }"#, "`vidoe`"),
+            (r#"quality = 3"#, "a tier like"),
+        ] {
+            let text = format!("[[target]]\nsrc = \"a.mp4\"\n{line}\n");
+            let error = toml::from_str::<Config>(&text).expect_err("config should not parse");
+            assert!(error.message().contains(expected), "{line}: {error}");
+        }
     }
 
     #[test]

@@ -237,7 +237,6 @@ mod tests {
             src: PathBuf::from("interview.mp4"),
             name: None,
             out_dir: PathBuf::from("assets/video"),
-            quality: crate::config::Quality::Balanced,
             codecs: vec![Codec::H264, Codec::Vp9],
             crop: None,
             widths: vec![480, 960],
@@ -245,7 +244,8 @@ mod tests {
             fps: None,
             audio: Some(AudioSettings {
                 normalize: false,
-                bitrate: "128k".to_string(),
+                bitrate: None,
+                quality: crate::config::Quality::Balanced,
             }),
             poster: Some(PosterSettings { at: None }),
             subtitles: Some(SubtitleSettings {

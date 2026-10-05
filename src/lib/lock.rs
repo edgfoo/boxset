@@ -125,9 +125,9 @@ fn describe_work(work: &TaskWork) -> String {
                 .map(|a| match a.normalize {
                     true => {
                         let t = &crate::command::LOUDNESS_TARGET;
-                        format!("{}:I={}:TP={}:LRA={}", a.bitrate, t.i, t.tp, t.lra)
+                        format!("{}:I={}:TP={}:LRA={}", a.encode_bitrate(), t.i, t.tp, t.lra)
                     }
-                    false => format!("{}:false", a.bitrate),
+                    false => format!("{}:false", a.encode_bitrate()),
                 })
                 .unwrap_or_else(|| "none".to_string());
             format!(
@@ -199,7 +199,7 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Codec;
+    use crate::config::{Codec, Quality};
     use crate::settings::{CodecOptions, Crop, Timestamp};
 
     fn output() -> crate::task::Output {
@@ -258,19 +258,36 @@ mod tests {
         assert_ne!(args_hash(&rendition(480)), args_hash(&poster));
     }
 
+    fn with_audio(audio: crate::settings::AudioSettings) -> String {
+        let mut work = rendition(480);
+        if let TaskWork::Rendition { audio: slot, .. } = &mut work {
+            *slot = Some(audio);
+        }
+        args_hash(&work)
+    }
+
+    fn audio(normalize: bool, quality: Quality) -> crate::settings::AudioSettings {
+        crate::settings::AudioSettings {
+            normalize,
+            bitrate: None,
+            quality,
+        }
+    }
+
     #[test]
     fn normalisation_is_part_of_the_hash() {
-        let with = |normalize| {
-            let mut work = rendition(480);
-            if let TaskWork::Rendition { audio, .. } = &mut work {
-                *audio = Some(crate::settings::AudioSettings {
-                    normalize,
-                    bitrate: "128k".to_string(),
-                });
-            }
-            args_hash(&work)
-        };
-        assert_ne!(with(true), with(false));
+        assert_ne!(
+            with_audio(audio(true, Quality::Balanced)),
+            with_audio(audio(false, Quality::Balanced))
+        );
+    }
+
+    #[test]
+    fn the_audio_tier_is_part_of_the_hash() {
+        assert_ne!(
+            with_audio(audio(true, Quality::Low)),
+            with_audio(audio(true, Quality::High))
+        );
     }
 
     #[test]

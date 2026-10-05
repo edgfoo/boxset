@@ -104,7 +104,7 @@ fn rows_for_field(field: &'static fields::Field) -> Vec<(HelpGroup, HelpRow)> {
         rows.push((
             field.group,
             HelpRow {
-                name: name.to_string(),
+                name: row_name(name, field.aliases),
                 value_name: field.value_name,
                 default_note: field.default_note,
                 description: vec![field.help_note.to_string()],
@@ -120,7 +120,7 @@ fn rows_for_field(field: &'static fields::Field) -> Vec<(HelpGroup, HelpRow)> {
             rows.push((
                 sub.group,
                 HelpRow {
-                    name: name.to_string(),
+                    name: row_name(name, sub.aliases),
                     value_name: sub.value_name,
                     default_note: sub.default_note,
                     description: description_lines(sub),
@@ -130,6 +130,19 @@ fn rows_for_field(field: &'static fields::Field) -> Vec<(HelpGroup, HelpRow)> {
     }
 
     rows
+}
+
+/// Short aliases go before the flag, long ones after: `-q, --quality`,
+/// `--quality-audio, --qa`.
+fn row_name(flag: &str, aliases: &[&str]) -> String {
+    let (long, short): (Vec<&str>, Vec<&str>) =
+        aliases.iter().partition(|alias| alias.starts_with("--"));
+    short
+        .into_iter()
+        .chain([flag])
+        .chain(long)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 const CHOICES_PER_LINE: usize = 3;
@@ -444,6 +457,7 @@ mod tests {
             .into_iter()
             .chain(RUN_FLAGS.iter().copied())
             .chain(BUILD_FLAGS.iter().copied())
+            .chain(fields::flag_aliases())
             .map(str::to_string)
             .collect()
     }

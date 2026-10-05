@@ -485,9 +485,10 @@ mod tests {
                 trim: None,
                 crop: None,
                 fps: None,
-                audio: audio.then(|| crate::settings::AudioSettings {
+                audio: audio.then_some(crate::settings::AudioSettings {
                     normalize: false,
-                    bitrate: "128k".to_string(),
+                    bitrate: None,
+                    quality: crate::config::Quality::Balanced,
                 }),
             },
         }

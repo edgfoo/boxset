@@ -7,7 +7,8 @@ use clap::Args;
 
 use boxset::config::{
     Anchor, AudioField, Codec, CodecOverrides, Crop, Fps, PosterField, PosterSettings, Quality,
-    SubtitleSettings, SubtitlesField, TargetConfig, TimeRange, TranscriptionModel, model_names,
+    QualityField, SubtitleSettings, SubtitlesField, TargetConfig, TimeRange, TranscriptionModel,
+    model_names,
 };
 use boxset::problem::Severity;
 
@@ -17,8 +18,12 @@ use super::style::Note;
 pub struct FieldFlags {
     #[arg(long)]
     pub name: Option<String>,
-    #[arg(long)]
+    #[arg(short = 'q', long)]
     pub quality: Option<String>,
+    #[arg(long = "quality-video", visible_alias = "qv")]
+    pub quality_video: Option<String>,
+    #[arg(long = "quality-audio", visible_alias = "qa")]
+    pub quality_audio: Option<String>,
     #[arg(long, value_delimiter = ',')]
     pub codecs: Option<Vec<String>>,
     #[arg(long)]
@@ -112,6 +117,8 @@ fn given_field_flags(fields: &FieldFlags) -> Vec<(&'static str, bool)> {
     vec![
         ("--name", fields.name.is_some()),
         ("--quality", fields.quality.is_some()),
+        ("--quality-video", fields.quality_video.is_some()),
+        ("--quality-audio", fields.quality_audio.is_some()),
         ("--codecs", fields.codecs.is_some()),
         ("--crop", fields.crop.is_some()),
         ("--crop-anchor", fields.crop_anchor.is_some()),
@@ -153,7 +160,7 @@ impl FieldFlags {
         Ok(TargetConfig {
             src: Some(src),
             name: self.name.clone(),
-            quality: self.quality.as_deref().map(parse_quality).transpose()?,
+            quality: quality_field(self)?,
             codecs: self
                 .codecs
                 .as_ref()
@@ -224,6 +231,16 @@ fn crop_field(flags: &FieldFlags) -> Result<Option<Crop>, Note> {
         },
         None => Crop::Bare(ratio),
     }))
+}
+
+fn quality_field(flags: &FieldFlags) -> Result<Option<QualityField>, Note> {
+    let parse = |raw: &Option<String>| raw.as_deref().map(parse_quality).transpose();
+    let field = QualityField {
+        both: parse(&flags.quality)?,
+        video: parse(&flags.quality_video)?,
+        audio: parse(&flags.quality_audio)?,
+    };
+    Ok((field != QualityField::default()).then_some(field))
 }
 
 fn poster_field(flags: &FieldFlags) -> Option<PosterField> {
@@ -388,5 +405,26 @@ mod tests {
         named.dedup();
 
         assert_eq!(named, boxset::fields::target_flags());
+    }
+
+    #[derive(clap::Parser)]
+    struct Parsed {
+        #[command(flatten)]
+        fields: FieldFlags,
+    }
+
+    fn parse(args: &[&str]) -> FieldFlags {
+        use clap::Parser;
+        Parsed::parse_from(std::iter::once("boxset").chain(args.iter().copied())).fields
+    }
+
+    #[test]
+    fn a_split_quality_flag_wins_over_quality() {
+        let flags = parse(&["-q", "low", "--qa", "high"]);
+        let Ok(Some(quality)) = quality_field(&flags) else {
+            panic!("expected a quality field");
+        };
+        assert_eq!(quality.video(), Some(Quality::Low));
+        assert_eq!(quality.audio(), Some(Quality::High));
     }
 }

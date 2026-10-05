@@ -49,6 +49,8 @@ pub struct Field {
     pub toml_key: &'static str,
     /// The CLI flag, where one exists.
     pub flag: Option<&'static str>,
+    /// Other spellings of `flag`, like `-q` or `--qa`.
+    pub aliases: &'static [&'static str],
     /// Empty for a flag that takes no value.
     pub value_name: &'static str,
     pub shape: Shape,
@@ -63,6 +65,7 @@ impl Field {
         Field {
             toml_key,
             flag: None,
+            aliases: &[],
             value_name: "",
             shape,
             help_note: "",
@@ -109,6 +112,33 @@ const X264_PRESETS: &[&str] = &[
     "veryslow",
 ];
 
+const QUALITY_FIELDS: &[Field] = &[
+    Field {
+        flag: Some("--quality-video"),
+        aliases: &["--qv"],
+        value_name: "<tier>",
+        help_note: "video only, overrides --quality",
+        default_note: "quality",
+        ..Field::new(
+            "video",
+            Shape::Choice(QUALITY_TIERS),
+            "Video tier, trading file size against picture quality.",
+        )
+    },
+    Field {
+        flag: Some("--quality-audio"),
+        aliases: &["--qa"],
+        value_name: "<tier>",
+        help_note: "audio only, overrides --quality",
+        default_note: "quality",
+        ..Field::new(
+            "audio",
+            Shape::Choice(QUALITY_TIERS),
+            "Audio tier, trading file size against sound quality. An audio bitrate wins over it.",
+        )
+    },
+];
+
 const AUDIO_FIELDS: &[Field] = &[
     Field {
         default_note: "true",
@@ -119,14 +149,14 @@ const AUDIO_FIELDS: &[Field] = &[
         )
     },
     Field {
-        default_note: "128k",
+        default_note: "set by quality",
         ..Field::new(
             "bitrate",
             Shape::Pattern {
                 regex: r"^\d+k$",
                 hint: "a bitrate like 128k",
             },
-            "Audio bitrate, as ffmpeg spells it.",
+            "Audio bitrate, as ffmpeg spells it. Wins over quality.",
         )
     },
 ];
@@ -296,13 +326,14 @@ pub const TARGET_FIELDS: &[Field] = &[
     },
     Field {
         flag: Some("--quality"),
+        aliases: &["-q"],
         value_name: "<tier>",
-        help_note: "video quality: low, balanced, high, max",
+        help_note: "low, balanced, high, max",
         default_note: "balanced",
         ..Field::new(
             "quality",
-            Shape::Choice(QUALITY_TIERS),
-            "How hard to compress, trading file size against picture quality.",
+            Shape::Table(QUALITY_FIELDS),
+            "How hard to compress video and audio. One tier for both, or a table to set each.",
         )
     },
     Field {
@@ -504,6 +535,20 @@ fn flags_of(fields: &'static [Field]) -> Vec<String> {
     flags.sort();
     flags.dedup();
     flags
+}
+
+/// Every alias of every flag, eg. `-q` for `--quality`.
+pub fn flag_aliases() -> Vec<&'static str> {
+    let nested = |field: &'static Field| match field.shape {
+        Shape::Table(inner) | Shape::Toggle(inner) => inner,
+        _ => &[],
+    };
+    TOP_LEVEL_FIELDS
+        .iter()
+        .chain(TARGET_FIELDS)
+        .flat_map(|field| std::iter::once(field).chain(nested(field)))
+        .flat_map(|field| field.aliases.iter().copied())
+        .collect()
 }
 
 pub fn target_flags() -> Vec<String> {

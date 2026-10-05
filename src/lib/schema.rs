@@ -5,7 +5,7 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::fields::{Field, Shape, TARGET_FIELDS, TOP_LEVEL_FIELDS};
+use crate::fields::{Field, QUALITY_TIERS, Shape, TARGET_FIELDS, TOP_LEVEL_FIELDS};
 
 /// Pinned per release, so a config keeps validating against the schema of the
 /// boxset that wrote it.
@@ -153,6 +153,13 @@ fn table(key: &str, fields: &'static [Field]) -> Value {
                 object,
             ],
         }),
+        // A bare tier sets video and audio both.
+        "quality" => json!({
+            "anyOf": [
+                { "type": "string", "enum": QUALITY_TIERS },
+                object,
+            ],
+        }),
         _ => object,
     }
 }
@@ -201,6 +208,14 @@ mod tests {
         let options = audio["anyOf"].as_array().expect("anyOf").clone();
         assert!(options.iter().any(|o| o["const"] == json!(false)));
         assert!(!options.iter().any(|o| o["const"] == json!(true)));
+    }
+
+    #[test]
+    fn quality_accepts_a_bare_tier_and_a_table() {
+        let quality = target_properties()["quality"].clone();
+        let options = quality["anyOf"].as_array().expect("anyOf").clone();
+        assert!(options.iter().any(|o| o["type"] == json!("string")));
+        assert!(options.iter().any(|o| o["type"] == json!("object")));
     }
 
     #[test]

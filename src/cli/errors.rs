@@ -94,6 +94,10 @@ fn problem_wording(kind: &ProblemKind) -> (String, Vec<String>) {
             "audio settings on a video with no audio track".to_string(),
             vec!["They'll be ignored.".to_string()],
         ),
+        ProblemKind::AudioBitrateOverridesQuality => (
+            "audio.bitrate is set, so quality.audio has no effect".to_string(),
+            vec!["Remove either audio.bitrate or quality.audio.".to_string()],
+        ),
         ProblemKind::UnknownField { name, suggestion } => {
             let detail = match suggestion {
                 Some(guess) => vec![format!("Did you mean `{guess}`?")],

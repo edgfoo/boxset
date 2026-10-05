@@ -9,7 +9,6 @@ pub struct Settings {
     pub src: PathBuf,
     pub name: Option<String>,
     pub out_dir: PathBuf,
-    pub quality: Quality,
     pub codecs: Vec<Codec>,
     pub crop: Option<Crop>,
     pub widths: Vec<u32>,
@@ -76,7 +75,17 @@ impl std::fmt::Display for Fps {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioSettings {
     pub normalize: bool,
-    pub bitrate: String,
+    /// Only the user's own value. `None` means quality picks.
+    pub bitrate: Option<String>,
+    pub quality: Quality,
+}
+
+impl AudioSettings {
+    pub fn encode_bitrate(&self) -> &str {
+        self.bitrate
+            .as_deref()
+            .unwrap_or_else(|| audio_bitrate(self.quality))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -168,6 +177,15 @@ pub fn expand_quality(quality: Quality, codec: Codec) -> CodecOptions {
             preset: Some(effort.to_string()),
             ..Default::default()
         },
+    }
+}
+
+pub fn audio_bitrate(quality: Quality) -> &'static str {
+    match quality {
+        Quality::Low => "64k",
+        Quality::Balanced => "96k",
+        Quality::High => "128k",
+        Quality::Max => "160k",
     }
 }
 
