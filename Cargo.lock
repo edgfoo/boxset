@@ -103,6 +103,7 @@ dependencies = [
  "ctrlc",
  "directories",
  "libc",
+ "percent-encoding",
  "serde",
  "serde_json",
  "sha2",

@@ -14,10 +14,11 @@ Create multiple widths and transcodings, capture poster images, generate subtitl
 > Feedback, issues and contributions welcome!
 >
 > Coming soon-ish...
-> * `boxset html` – outputs suggested HTML (`<video>`, `<source>`-es, etc) for the last run's output
-> * Post-run analysis of outputs and suggestions for improving compression
-> * Better audio handling (`quality` doesn't really tune audio at the moment!)
-> * GIF outputs
+>
+> - `boxset html` – outputs suggested HTML (`<video>`, `<source>`-es, etc) for the last run's output
+> - Post-run analysis of outputs and suggestions for improving compression
+> - Better audio handling (`quality` doesn't really tune audio at the moment!)
+> - GIF outputs
 
 ## What it does
 
@@ -67,6 +68,12 @@ Simple editing tasks like cropping and trimming can also be accomplished.
 
 ```bash
 boxset interview.mp4 --quality high --crop 9:16 --crop-anchor top --trim 0:05-1:30
+```
+
+Pass `--html` to also write a `boxset.html` file with HTML `<video>` snippets for each video.
+
+```bash
+boxset interview.mp4 --html
 ```
 
 Run `boxset --help` for the full flag list.

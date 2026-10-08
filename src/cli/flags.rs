@@ -93,6 +93,17 @@ pub struct FieldFlags {
     /// Auto-accepts the "proceed" prompt
     #[arg(short = 'y', long = "yes", global = true)]
     pub yes: bool,
+    #[arg(long = "html", global = true)]
+    pub html: bool,
+    /// Also turns on `--html`.
+    #[arg(long = "html-base-url", global = true)]
+    pub html_base_url: Option<String>,
+}
+
+impl FieldFlags {
+    pub fn writes_html(&self) -> bool {
+        self.html || self.html_base_url.is_some()
+    }
 }
 
 #[cfg(test)]
@@ -103,6 +114,8 @@ pub const RUN_FLAGS: &[&str] = &[
     "--jobs",
     "-y",
     "--yes",
+    "--html",
+    "--html-base-url",
     "--help",
     "-h",
     "-V",

@@ -83,9 +83,9 @@ pub fn recap_lines(
     lines
 }
 
-pub fn recap_section(failed: usize, interrupted: bool) -> &'static str {
-    if failed > 0 || interrupted {
-        return "Cut";
+pub fn recap_section(succeeded: bool) -> &'static str {
+    match succeeded {
+        true => "That's a wrap",
+        false => "Cut",
     }
-    "That's a wrap"
 }

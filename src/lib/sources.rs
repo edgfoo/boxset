@@ -183,6 +183,8 @@ struct FfprobeOutput {
 struct FfprobeStream {
     codec_type: String,
     codec_name: Option<String>,
+    profile: Option<String>,
+    level: Option<i32>,
     width: Option<u32>,
     height: Option<u32>,
     r_frame_rate: Option<String>,
@@ -194,13 +196,13 @@ struct FfprobeFormat {
     size: Option<String>,
 }
 
-fn probe_path(path: &Path) -> SourceState {
+fn run_ffprobe(path: &Path) -> Result<FfprobeOutput, ProbeErrorKind> {
     if !path.is_file() {
-        return SourceState::Failed(ProbeErrorKind::NotFound);
+        return Err(ProbeErrorKind::NotFound);
     }
 
     let Some(ffprobe) = resolve_tool_path(Tool::Ffprobe) else {
-        return SourceState::Failed(ProbeErrorKind::Unreadable);
+        return Err(ProbeErrorKind::Unreadable);
     };
 
     let output = Command::new(ffprobe)
@@ -217,16 +219,21 @@ fn probe_path(path: &Path) -> SourceState {
         .output();
 
     let Ok(output) = output else {
-        return SourceState::Failed(ProbeErrorKind::Unreadable);
+        return Err(ProbeErrorKind::Unreadable);
     };
 
     // ffprobe ran and rejected the file: it read the bytes and they weren't video.
     if !output.status.success() {
-        return SourceState::Failed(ProbeErrorKind::Unparseable);
+        return Err(ProbeErrorKind::Unparseable);
     }
 
-    let Ok(parsed) = serde_json::from_slice::<FfprobeOutput>(&output.stdout) else {
-        return SourceState::Failed(ProbeErrorKind::Unparseable);
+    serde_json::from_slice::<FfprobeOutput>(&output.stdout).map_err(|_| ProbeErrorKind::Unparseable)
+}
+
+fn probe_path(path: &Path) -> SourceState {
+    let parsed = match run_ffprobe(path) {
+        Ok(parsed) => parsed,
+        Err(kind) => return SourceState::Failed(kind),
     };
 
     let Some(video) = parsed.streams.iter().find(|s| s.codec_type == "video") else {
@@ -282,6 +289,30 @@ fn probe_path(path: &Path) -> SourceState {
             .unwrap_or_else(|| "unknown".to_string()),
         audio_codec,
         size_bytes,
+    })
+}
+
+/// A written rendition, in the detail a `<source type>` needs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutputProbe {
+    pub width: u32,
+    pub height: u32,
+    pub has_audio: bool,
+    pub profile: Option<String>,
+    /// ffprobe reports an unknown level as -99, which reads as `None`
+    pub level: Option<i32>,
+}
+
+pub fn probe_output(path: &Path) -> Option<OutputProbe> {
+    let parsed = run_ffprobe(path).ok()?;
+    let video = parsed.streams.iter().find(|s| s.codec_type == "video")?;
+
+    Some(OutputProbe {
+        width: video.width?,
+        height: video.height?,
+        has_audio: parsed.streams.iter().any(|s| s.codec_type == "audio"),
+        profile: video.profile.clone(),
+        level: video.level.filter(|l| *l >= 0),
     })
 }
 

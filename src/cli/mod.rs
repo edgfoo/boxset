@@ -5,6 +5,7 @@ mod config;
 mod errors;
 mod flags;
 mod help;
+mod html;
 mod live;
 mod plan;
 mod recap;
@@ -86,6 +87,8 @@ struct RunSettings {
     /// Named as the locator when a problem belongs to the config file rather
     /// than to one target.
     config_path: Option<PathBuf>,
+    html: bool,
+    html_base_url: Option<String>,
 }
 
 /// `boxset video.mp4`: one positional source, described entirely by flags
@@ -105,6 +108,8 @@ pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()>
         yes: fields.yes,
         lock_dir: PathBuf::from("."),
         config_path: None,
+        html: fields.writes_html(),
+        html_base_url: fields.html_base_url.clone(),
     };
     run(
         vec![config],
@@ -166,6 +171,8 @@ pub fn build(
         yes: fields.yes,
         lock_dir: dir,
         config_path: Some(path.clone()),
+        html: fields.writes_html(),
+        html_base_url: fields.html_base_url.clone(),
     };
     let selection = Selection {
         names: targets.to_vec(),
@@ -269,15 +276,21 @@ fn run(
         .collect::<std::collections::BTreeSet<_>>()
         .len();
     let requirements = boxset::check_environment(&plan);
+    let html_file = settings.html.then(|| html::html_file(&settings.lock_dir));
 
     plan::print_plan(
         &blocks,
         &settings.out_dir,
         targets,
         plan.tasks.len(),
+        html_file.as_deref(),
         &notes,
         &requirements,
     );
+
+    if let Some(file) = &html_file {
+        html::ensure_writable(file);
+    }
 
     if settings.dry_run {
         if let Err(e) = boxset::ensure_available(&requirements) {
@@ -309,9 +322,22 @@ fn run(
     if interrupted {
         reporter.commit_stopped();
     }
-    reporter.commit_hints(outcome.failed);
+    let html = match &html_file {
+        Some(file) if outcome.failed == 0 && !interrupted => Some(html::write_html(
+            &plan,
+            &known,
+            file,
+            settings.html_base_url.as_deref(),
+        )),
+        _ => None,
+    };
+    let html_failed = matches!(html, Some(Err(_)));
 
-    style::section(recap::recap_section(outcome.failed, interrupted));
+    reporter.commit_hints(outcome.failed + usize::from(html_failed));
+
+    style::section(recap::recap_section(
+        outcome.failed == 0 && !interrupted && !html_failed,
+    ));
     for line in recap::recap_lines(
         &plan,
         &outcome.produced,
@@ -322,6 +348,9 @@ fn run(
         &settings.out_dir,
     ) {
         println!("{line}");
+    }
+    if let (Some(file), Some(result)) = (&html_file, &html) {
+        html::print_result(file, result);
     }
     println!();
 
@@ -334,7 +363,7 @@ fn run(
         &settings.lock_dir,
     );
 
-    if outcome.failed > 0 {
+    if outcome.failed > 0 || html_failed {
         std::process::exit(1);
     }
     // 128 + SIGINT, standard interrupted exit code

@@ -16,6 +16,8 @@ pub mod fields;
 pub mod generate;
 #[path = "lib/hints.rs"]
 pub mod hints;
+#[path = "lib/html/mod.rs"]
+pub mod html;
 #[path = "lib/lock.rs"]
 pub mod lock;
 #[path = "lib/outputs.rs"]

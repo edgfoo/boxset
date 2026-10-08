@@ -141,6 +141,7 @@ pub fn print_plan(
     out_dir: &Path,
     targets: usize,
     outputs: usize,
+    html_file: Option<&Path>,
     notes: &[Note],
     requirements: &[Requirement],
 ) {
@@ -196,6 +197,20 @@ pub fn print_plan(
             bold_dim("overwritten"),
             yellow(OVERWRITE_MARK),
         );
+        println!();
+    }
+
+    if let Some(file) = html_file {
+        let path = bold_dim(&directory(file));
+        match file.exists() {
+            true => println!(
+                "  {} {} {} {path}",
+                dim("HTML will be"),
+                bold_dim("overwritten"),
+                dim("at"),
+            ),
+            false => println!("  {} {path}", dim("HTML will be written to")),
+        }
         println!();
     }
 

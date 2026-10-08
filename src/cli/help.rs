@@ -57,6 +57,18 @@ impl CommandFlag {
 const GENERAL_COMMAND_FLAGS: &[CommandFlag] = &[
     flag("--dry-run", "", "", "print the plan but output nothing"),
     flag("-y, --yes", "", "", "skip confirmations"),
+    flag(
+        "--html",
+        "",
+        "",
+        "write boxset.html, with a <video> per target",
+    ),
+    flag(
+        "--html-base-url",
+        "<url>",
+        "",
+        "where boxset.html's paths point",
+    ),
     flag("--verbose", "", "", "show ffmpeg errors"),
     flag("-h, --help", "", "", "show this doc"),
     flag("-V, --version", "", "", ""),
@@ -80,6 +92,18 @@ const BUILD_COMMAND_FLAGS: &[CommandFlag] = &[
     flag("--jobs", "<n>", "2", "or the config's jobs"),
     flag("--dry-run", "", "", "print the plan, encode nothing"),
     flag("-y, --yes", "", "", "skip the confirmation"),
+    flag(
+        "--html",
+        "",
+        "",
+        "write boxset.html, with a <video> per target",
+    ),
+    flag(
+        "--html-base-url",
+        "<url>",
+        "",
+        "where boxset.html's paths point",
+    ),
     flag("--verbose", "", "", "show ffmpeg's output on failure"),
     flag("-h, --help", "", "", "this doc"),
 ];
