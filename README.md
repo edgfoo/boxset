@@ -9,16 +9,18 @@ Create multiple widths and transcodings, capture poster images, generate subtitl
 > 🚧 **Work in progress**
 >
 > Boxset is a newly-released tool and is still in development.
-> Expect bugs and breaking changes until the project reaches `1.0`.
+> Expect bugs and breaking changes until version `1.0`. Feedback, issues and contributions welcome!
 >
-> Feedback, issues and contributions welcome!
+> Recently added...
 >
-> Coming soon-ish...
+> - `--html`: outputs suggested HTML (`<video>`, `<source>`-es, etc) for a run's outputs
+> - better audio handling (better audio quality defaults, individual audio and video quality tuning, etc)
 >
-> - `boxset html` – outputs suggested HTML (`<video>`, `<source>`-es, etc) for the last run's output
-> - Post-run analysis of outputs and suggestions for improving compression
-> - Better audio handling (`quality` doesn't really tune audio at the moment!)
-> - GIF outputs
+> What's next...
+>
+> - post-run analysis of outputs and suggestions for improving compression
+> - binaries for Linux (Boxset is currently only built for macOS)
+> - GIF outputs (maybe?)
 
 ## What it does
 
@@ -31,7 +33,8 @@ boxset interview.mov
 And you'll get:
 
 - MP4 (H264) and WebM (VP9) versions, at a series of widths equal to and below the source video
-- fine-tuned compression for video and audio tracks
+- fine-tuned compression for video and audio
+- audio normalisation
 - a poster image for each output width
 - subtitles generated on your machine (using NVidia's Parakeet model by default)
 
