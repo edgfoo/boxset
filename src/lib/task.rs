@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::command::LoudnessMeasurement;
 use crate::config::{Codec, TranscriptionModel};
 use crate::settings::{AudioSettings, CodecOptions, Crop, Fps, TimeRange, Timestamp};
 use crate::sources::Probe;
@@ -19,6 +20,23 @@ pub enum TaskKind {
     Poster { width: u32 },
     Subtitles,
     Loudness,
+}
+
+impl TaskKind {
+    /// True if this task can't start until `other`, in the same target, has
+    /// finished.
+    pub fn depends_on(&self, other: &TaskKind) -> bool {
+        matches!(
+            (self, other),
+            (TaskKind::Rendition { .. }, TaskKind::Loudness)
+        )
+    }
+}
+
+/// What a task hands to the tasks that depend on it
+#[derive(Debug, Clone)]
+pub enum TaskOutput {
+    Loudness(LoudnessMeasurement),
 }
 
 #[derive(Debug, Clone)]

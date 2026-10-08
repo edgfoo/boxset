@@ -55,7 +55,7 @@ Paths are relative to the directory that `boxset.toml` lives in. See [the paths 
 
 > **Default:** `2`
 
-How many videos are encoded at once.
+How many outputs are encoded at once.
 
 Encoding individual videos is already a multi-threaded process,
 so higher values here give small returns.

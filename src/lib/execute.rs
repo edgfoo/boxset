@@ -2,12 +2,12 @@
 //! ordering and concurrency; each task's executor turns intent into a
 //! command or call.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use crate::cancel::Cancel;
@@ -17,7 +17,7 @@ use crate::environment::resolve_tool_path;
 use crate::error::{BoxsetError, FfmpegError, Tool, TranscribeError, classify_ffmpeg_failure};
 use crate::plan::Plan;
 use crate::report::{Phase, Reporter, TaskOutcome, TaskReport};
-use crate::task::{Task, TaskId, TaskKind, TaskWork};
+use crate::task::{Task, TaskId, TaskKind, TaskOutput, TaskWork};
 use crate::temp::TempFile;
 use crate::transcribe;
 
@@ -66,54 +66,40 @@ pub fn execute(
 
     reporter.phase(Phase::Encoding);
 
-    // A worker claims a whole target, not a single task, so one target's
-    // outputs finish together and a client can show a block at a time.
-    let cursor = AtomicUsize::new(0);
-    let tasks = plan.tasks.as_slice();
-    let groups = target_groups(tasks);
+    let queue = Queue::new(&plan.tasks);
     let (tx, rx) = mpsc::channel::<Event>();
-    let workers = jobs.max(1).min(groups.len());
+    let workers = jobs.max(1).min(plan.tasks.len());
 
     std::thread::scope(|scope| {
         for _ in 0..workers {
-            let cursor = &cursor;
-            let groups = &groups;
+            let queue = &queue;
             let cancel = &cancel;
             let tx = tx.clone();
             scope.spawn(move || {
                 let run = Run { tx: &tx, cancel };
 
-                loop {
-                    if run.is_cancelled() {
-                        break;
-                    }
-
-                    let next = cursor.fetch_add(1, Ordering::Relaxed);
-                    let Some(group) = groups.get(next) else {
-                        break;
-                    };
-
-                    let mut measured = None;
-
-                    for task in &tasks[group.clone()] {
-                        // Tasks that never started are not reported at all.
-                        if run.is_cancelled() {
-                            break;
+                // Tasks that never started are not reported at all.
+                while let Some(mut claim) = queue.claim(cancel) {
+                    let task = claim.task;
+                    run.send(Event::Started(task.id));
+                    let started = Instant::now();
+                    let result = match run_task(task, &claim.inputs, &run) {
+                        Ok(output) => {
+                            claim.output = output;
+                            Ok(())
                         }
-
-                        run.send(Event::Started(task.id));
-                        let started = Instant::now();
-                        let result = run_task(task, &mut measured, &run);
-                        let elapsed = started.elapsed();
-                        let bytes = match result.is_ok() {
-                            true => task
-                                .output_path()
-                                .and_then(|path| std::fs::metadata(path).ok())
-                                .map(|m| m.len()),
-                            false => None,
-                        };
-                        let _ = tx.send(Event::Finished(task.id, result, elapsed, bytes));
-                    }
+                        Err(e) => Err(e),
+                    };
+                    let elapsed = started.elapsed();
+                    let bytes = match result.is_ok() {
+                        true => task
+                            .output_path()
+                            .and_then(|path| std::fs::metadata(path).ok())
+                            .map(|m| m.len()),
+                        false => None,
+                    };
+                    drop(claim);
+                    let _ = tx.send(Event::Finished(task.id, result, elapsed, bytes));
                 }
             });
         }
@@ -166,19 +152,112 @@ pub fn execute(
     })
 }
 
-/// The contiguous run of tasks belonging to each target. `plan` emits targets
-/// in order, so a target's tasks are always adjacent.
-fn target_groups(tasks: &[Task]) -> Vec<std::ops::Range<usize>> {
-    let mut groups: Vec<std::ops::Range<usize>> = Vec::new();
+/// Hands out tasks in plan order, skipping any that depend on an unfinished
+/// task of the same target.
+struct Queue<'a> {
+    state: Mutex<QueueState<'a>>,
+    changed: Condvar,
+}
 
-    for (index, task) in tasks.iter().enumerate() {
-        match groups.last_mut() {
-            Some(last) if tasks[last.start].id.target == task.id.target => last.end = index + 1,
-            _ => groups.push(index..index + 1),
+struct QueueState<'a> {
+    pending: Vec<&'a Task>,
+    /// Each target's tasks that are pending or running
+    unfinished: HashMap<usize, HashSet<TaskKind>>,
+    /// Each target's finished tasks that produced an output
+    outputs: HashMap<usize, Vec<(TaskKind, TaskOutput)>>,
+}
+
+impl QueueState<'_> {
+    fn ready(&self, id: TaskId) -> bool {
+        !self.unfinished[&id.target]
+            .iter()
+            .any(|other| id.kind.depends_on(other))
+    }
+}
+
+impl<'a> Queue<'a> {
+    fn new(tasks: &'a [Task]) -> Self {
+        let mut unfinished: HashMap<usize, HashSet<TaskKind>> = HashMap::new();
+        for task in tasks {
+            unfinished
+                .entry(task.id.target)
+                .or_default()
+                .insert(task.id.kind);
+        }
+
+        Self {
+            state: Mutex::new(QueueState {
+                pending: tasks.iter().collect(),
+                unfinished,
+                outputs: HashMap::new(),
+            }),
+            changed: Condvar::new(),
         }
     }
 
-    groups
+    /// Waits only while every pending task depends on one that is running.
+    fn claim(&self, cancel: &Cancel) -> Option<Claim<'_, 'a>> {
+        let mut state = self.state.lock().unwrap();
+        loop {
+            if cancel.is_cancelled() || state.pending.is_empty() {
+                return None;
+            }
+
+            if let Some(index) = state.pending.iter().position(|task| state.ready(task.id)) {
+                let task = state.pending.remove(index);
+                let inputs = state
+                    .outputs
+                    .get(&task.id.target)
+                    .into_iter()
+                    .flatten()
+                    .filter(|(kind, _)| task.id.kind.depends_on(kind))
+                    .map(|(_, output)| output.clone())
+                    .collect();
+
+                return Some(Claim {
+                    queue: self,
+                    task,
+                    inputs,
+                    output: None,
+                });
+            }
+
+            state = self.changed.wait(state).unwrap();
+        }
+    }
+
+    fn finish(&self, id: TaskId, output: Option<TaskOutput>) {
+        let mut state = self.state.lock().unwrap();
+
+        if let Some(unfinished) = state.unfinished.get_mut(&id.target) {
+            unfinished.remove(&id.kind);
+        }
+
+        if let Some(output) = output {
+            state
+                .outputs
+                .entry(id.target)
+                .or_default()
+                .push((id.kind, output));
+        }
+        self.changed.notify_all();
+    }
+}
+
+/// Finishes its task when dropped, so tasks waiting on it are released even
+/// if it panics.
+struct Claim<'q, 'a> {
+    queue: &'q Queue<'a>,
+    task: &'a Task,
+    /// The outputs of the tasks this one depends on
+    inputs: Vec<TaskOutput>,
+    output: Option<TaskOutput>,
+}
+
+impl Drop for Claim<'_, '_> {
+    fn drop(&mut self) {
+        self.queue.finish(self.task.id, self.output.take());
+    }
 }
 
 /// Written to a temp path and renamed on success, so a failed or interrupted
@@ -197,16 +276,23 @@ fn temp_path(output: &Path) -> PathBuf {
 
 fn run_task(
     task: &Task,
-    measured: &mut Option<command::LoudnessMeasurement>,
+    inputs: &[TaskOutput],
     run: &Run,
-) -> Result<(), BoxsetError> {
+) -> Result<Option<TaskOutput>, BoxsetError> {
     match &task.work {
-        TaskWork::Subtitles { model, trim, .. } => run_subtitles_task(task, *model, *trim, run),
-        TaskWork::Loudness { trim } => {
-            *measured = Some(run_loudness_task(task, *trim, run)?);
-            Ok(())
+        TaskWork::Subtitles { model, trim, .. } => {
+            run_subtitles_task(task, *model, *trim, run).map(|()| None)
         }
-        _ => run_ffmpeg_task(task, measured.as_ref(), run),
+        TaskWork::Loudness { trim } => {
+            run_loudness_task(task, *trim, run).map(|measured| Some(TaskOutput::Loudness(measured)))
+        }
+        _ => {
+            let measured = inputs
+                .iter()
+                .map(|TaskOutput::Loudness(measured)| measured)
+                .next();
+            run_ffmpeg_task(task, measured, run).map(|()| None)
+        }
     }
 }
 
@@ -617,52 +703,4 @@ fn run_ffmpeg(
         kind: classify_ffmpeg_failure(&stderr),
         stderr,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::sources::Probe;
-    use crate::task::TaskKind;
-    use std::sync::Arc;
-
-    fn task(target: usize, width: u32) -> Task {
-        Task {
-            id: TaskId {
-                target,
-                kind: TaskKind::Poster { width },
-            },
-            probe: Arc::new(Probe {
-                src: PathBuf::from("in.mp4"),
-                width: 1920,
-                height: 1080,
-                duration_secs: 10.0,
-                frame_rate: (25, 1),
-                has_audio: true,
-                video_codec: "h264".to_string(),
-                audio_codec: Some("aac".to_string()),
-                size_bytes: 1_000_000,
-            }),
-            work: TaskWork::Poster {
-                output: crate::task::Output {
-                    path: PathBuf::from("out.jpg"),
-                    exists: false,
-                },
-                width,
-                at: crate::settings::Timestamp(0.0),
-                crop: None,
-            },
-        }
-    }
-
-    #[test]
-    fn each_target_becomes_one_group() {
-        let tasks = vec![task(0, 480), task(0, 960), task(1, 480), task(2, 480)];
-        assert_eq!(target_groups(&tasks), vec![0..2, 2..3, 3..4]);
-    }
-
-    #[test]
-    fn no_tasks_is_no_groups() {
-        assert!(target_groups(&[]).is_empty());
-    }
 }
