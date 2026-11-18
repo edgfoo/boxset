@@ -15,9 +15,12 @@ Create multiple widths and transcodings, capture poster images, generate subtitl
 >
 > - `--html`: outputs suggested HTML (`<video>`, `<source>`-es, etc) for a run's outputs
 > - better audio handling (better audio quality defaults, individual audio and video quality tuning, etc)
+> - `--rush`: create a single compressed output, no poster or subs
 >
 > What's next...
 >
+> - image transcoding and compression with libvips
+> - lockfile-based skipping
 > - post-run analysis of outputs and suggestions for improving compression
 > - binaries for Linux (Boxset is currently only built for macOS)
 > - GIF outputs (maybe?)
