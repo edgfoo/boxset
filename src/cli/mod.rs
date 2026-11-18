@@ -321,7 +321,10 @@ fn run(
         &blocks,
         &settings.out_dir,
         targets,
-        plan.tasks.len(),
+        plan.tasks
+            .iter()
+            .filter(|t| t.output_path().is_some())
+            .count(),
         html_file.as_deref(),
         &notes,
         &requirements,

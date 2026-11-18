@@ -54,12 +54,22 @@ pub fn recap_lines(
         if !lines.is_empty() {
             lines.push(String::new());
         }
-        let outstanding = plan.tasks.len() - produced.len() - failed;
+        let file_tasks: Vec<_> = plan
+            .tasks
+            .iter()
+            .filter(|task| task.output_path().is_some())
+            .collect();
+        let total = file_tasks.len();
+        let built = file_tasks
+            .iter()
+            .filter(|task| produced.contains(&task.id))
+            .count();
+        let outstanding = total.saturating_sub(built + failed);
         lines.push(format!(
             "  Stopped with {} of {} {} left to build.",
             bold(&outstanding.to_string()),
-            bold(&plan.tasks.len().to_string()),
-            plural(plan.tasks.len(), "output"),
+            bold(&total.to_string()),
+            plural(total, "output"),
         ));
     }
 
@@ -75,9 +85,22 @@ pub fn recap_lines(
         ));
     }
 
-    if !made.is_empty() {
-        lines.push(String::new());
-        lines.push(format!("  Find them in {}.", bold(&directory(out_dir))));
+    let written: Vec<&std::path::Path> = plan
+        .tasks
+        .iter()
+        .filter(|task| produced.contains(&task.id))
+        .filter_map(|task| task.output_path())
+        .collect();
+    match written.as_slice() {
+        [] => {}
+        [file] => {
+            lines.push(String::new());
+            lines.push(format!("  Find it at {}.", bold(&directory(file))));
+        }
+        _ => {
+            lines.push(String::new());
+            lines.push(format!("  Find them in {}.", bold(&directory(out_dir))));
+        }
     }
 
     lines
