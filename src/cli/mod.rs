@@ -93,15 +93,20 @@ struct RunSettings {
 
 /// `boxset video.mp4`: one positional source, described entirely by flags
 pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()> {
-    let config = match fields.to_target_config(source.to_path_buf()) {
+    let mut config = match fields.to_target_config(source.to_path_buf()) {
         Ok(config) => config,
         Err(note) => errors::fail_with_note(note),
     };
+    fields.apply_rush(&mut config);
+    if fields.rush && config.widths.is_none() {
+        config.widths = source_width(source, &config).map(|width| vec![width]);
+    }
+    let default_out_dir = match fields.rush {
+        true => source_dir(source),
+        false => PathBuf::from("export"),
+    };
     let settings = RunSettings {
-        out_dir: fields
-            .out_dir
-            .clone()
-            .unwrap_or_else(|| PathBuf::from("export")),
+        out_dir: fields.out_dir.clone().unwrap_or(default_out_dir),
         jobs: fields.jobs.unwrap_or(DEFAULT_JOBS),
         dry_run: fields.dry_run,
         verbose: fields.verbose,
@@ -120,6 +125,30 @@ pub fn run_single_shot(source: &Path, fields: &FieldFlags) -> anyhow::Result<()>
     )
 }
 
+fn source_dir(source: &Path) -> PathBuf {
+    match source.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir.to_path_buf(),
+        _ => PathBuf::from("."),
+    }
+}
+
+/// The width the source will have after cropping. `None` if it can't be
+/// probed, so validation can report that in the usual way.
+fn source_width(source: &Path, config: &TargetConfig) -> Option<u32> {
+    let mut probed = Sources::new();
+    probed.request(&[source.to_path_buf()]);
+    probed.wait();
+
+    let Some(SourceState::Probed(probe)) = probed.get(source) else {
+        return None;
+    };
+    let crop = config
+        .crop
+        .as_ref()
+        .and_then(boxset::resolve::try_resolve_crop);
+    Some(boxset::command::cropped_size(crop, probe).0)
+}
+
 /// `boxset build [--target NAME]...`: reconstructs the outputs boxset.toml
 /// describes, filtered to the named targets if any are given.
 pub fn build(
@@ -136,6 +165,16 @@ pub fn build(
                 "Target settings come from boxset.toml.".to_string(),
                 format!("Try: boxset <video> {flag} ...   for a one-off"),
             ],
+            cause: None,
+        });
+    }
+
+    if fields.rush {
+        errors::fail_with_note(style::Note {
+            severity: Severity::Error,
+            locator: None,
+            message: "--rush can't be used with `build`".to_string(),
+            detail: vec![],
             cause: None,
         });
     }

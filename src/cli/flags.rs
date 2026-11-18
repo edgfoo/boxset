@@ -98,6 +98,8 @@ pub struct FieldFlags {
     /// Also turns on `--html`.
     #[arg(long = "html-base-url", global = true)]
     pub html_base_url: Option<String>,
+    #[arg(long = "rush", global = true)]
+    pub rush: bool,
 }
 
 impl FieldFlags {
@@ -116,6 +118,7 @@ pub const RUN_FLAGS: &[&str] = &[
     "--yes",
     "--html",
     "--html-base-url",
+    "--rush",
     "--help",
     "-h",
     "-V",
@@ -167,6 +170,20 @@ impl FieldFlags {
             .into_iter()
             .find(|(_, given)| *given)
             .map(|(flag, _)| flag)
+    }
+
+    /// Apply`--rush` flags option presets. Flags passed explicitly take precedence over presets.
+    pub fn apply_rush(&self, config: &mut TargetConfig) {
+        if !self.rush {
+            return;
+        }
+
+        config.codecs.get_or_insert_with(|| vec![Codec::H264]);
+        config.poster.get_or_insert(PosterField::Off(false));
+        config.subtitles.get_or_insert(SubtitlesField::Off(false));
+
+        let quality = config.quality.get_or_insert_with(QualityField::default);
+        quality.both.get_or_insert(Quality::High);
     }
 
     pub fn to_target_config(&self, src: PathBuf) -> Result<TargetConfig, Note> {
@@ -429,6 +446,34 @@ mod tests {
     fn parse(args: &[&str]) -> FieldFlags {
         use clap::Parser;
         Parsed::parse_from(std::iter::once("boxset").chain(args.iter().copied())).fields
+    }
+
+    fn rushed(args: &[&str]) -> TargetConfig {
+        let flags = parse(args);
+        let Ok(mut config) = flags.to_target_config(PathBuf::from("in.mp4")) else {
+            panic!("expected the flags to convert");
+        };
+        flags.apply_rush(&mut config);
+        config
+    }
+
+    #[test]
+    fn rush_fills_in_what_was_not_given() {
+        let config = rushed(&["--rush"]);
+        assert_eq!(config.codecs, Some(vec![Codec::H264]));
+        assert!(matches!(config.poster, Some(PosterField::Off(false))));
+        assert!(matches!(config.subtitles, Some(SubtitlesField::Off(false))));
+        let quality = config.quality.unwrap();
+        assert_eq!(quality.video(), Some(Quality::High));
+        assert_eq!(quality.audio(), Some(Quality::High));
+    }
+
+    #[test]
+    fn rush_yields_to_given_flags() {
+        let config = rushed(&["--rush", "--codecs", "av1", "-q", "low", "--poster"]);
+        assert_eq!(config.codecs, Some(vec![Codec::Av1]));
+        assert!(matches!(config.poster, Some(PosterField::Settings(_))));
+        assert_eq!(config.quality.unwrap().video(), Some(Quality::Low));
     }
 
     #[test]

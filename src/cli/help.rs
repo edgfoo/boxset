@@ -55,6 +55,12 @@ impl CommandFlag {
 }
 
 const GENERAL_COMMAND_FLAGS: &[CommandFlag] = &[
+    flag(
+        "--rush",
+        "",
+        "",
+        "make a single compressed output, no subs or poster",
+    ),
     flag("--dry-run", "", "", "print the plan but output nothing"),
     flag("-y, --yes", "", "", "skip confirmations"),
     flag(
@@ -251,6 +257,10 @@ const RECIPES: &[(&str, &str)] = &[
     (
         "Rename all outputs interview-web-* and place them in static/media",
         "boxset Interview.mp4 --name interview-web --out-dir static/media",
+    ),
+    (
+        "Create a single compressed output, no poster, no subtitles",
+        "boxset Interview.mov --rush",
     ),
     (
         "Crop outputs to a portrait 9:16 aspect ratio",
