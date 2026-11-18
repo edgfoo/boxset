@@ -107,6 +107,7 @@ jobs:
           tap="$(brew --repo)/Library/Taps/edgfoo/homebrew-boxset"
           mkdir -p "$tap/Formula" && git -C "$tap" init -q
           cp boxset.rb "$tap/Formula/boxset.rb"
+          brew trust --formula edgfoo/boxset/boxset
           brew audit --os=macos --arch=arm edgfoo/boxset/boxset
           brew audit --os=macos --arch=intel edgfoo/boxset/boxset
 
