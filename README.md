@@ -20,6 +20,7 @@ Create multiple widths and transcodings, capture poster images, generate subtitl
 > What's next...
 >
 > - image transcoding and compression with libvips
+> - crop ladders: have `--widths` output horizontal crops versus downscaling
 > - lockfile-based skipping
 > - post-run analysis of outputs and suggestions for improving compression
 > - binaries for Linux (Boxset is currently only built for macOS)
